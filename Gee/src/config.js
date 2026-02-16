@@ -23,7 +23,7 @@ export const config = {
     refreshToken: process.env.GOOGLE_REFRESH_TOKEN || '',
   },
   delivery: {
-    fromName: process.env.GEE_FROM_NAME || 'Gee',
+    fromName: process.env.GEE_FROM_NAME || 'G',
     fromEmail: required('GEE_FROM_EMAIL'),
     dailySendHourUtc: Number(process.env.GEE_DAILY_SEND_HOUR_UTC || 9),
   },

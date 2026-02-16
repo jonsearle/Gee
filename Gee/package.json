@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "start:web": "node src/server.js",
-    "run:scheduled": "node src/run-scheduled.js"
+    "run:scheduled": "node src/run-scheduled.js",
+    "dev:netlify": "netlify dev"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

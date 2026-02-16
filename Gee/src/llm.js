@@ -5,7 +5,7 @@ export function createLlmClient(apiKey) {
 }
 
 function buildPrompt({ userName, nowIso, emails, calendar, isFirstRun }) {
-  return `You are Gee, a calm and pragmatic daily planning assistant.
+  return `You are G, a calm and pragmatic daily planning assistant.
 
 Today is ${nowIso}.
 User name: ${userName}.
@@ -50,12 +50,32 @@ CALENDAR=${JSON.stringify(calendar)}
 }
 
 function parseJsonSafely(text) {
+  const raw = String(text || '').trim();
+  if (!raw) throw new Error('LLM returned empty response');
+
   try {
-    return JSON.parse(text);
+    return JSON.parse(raw);
   } catch {
-    const match = text.match(/\{[\s\S]*\}$/);
-    if (!match) throw new Error('LLM did not return valid JSON');
-    return JSON.parse(match[0]);
+    const fencedMatch = raw.match(/```json\s*([\s\S]*?)\s*```/i) || raw.match(/```\s*([\s\S]*?)\s*```/i);
+    if (fencedMatch?.[1]) {
+      try {
+        return JSON.parse(fencedMatch[1].trim());
+      } catch {
+        // Continue to bracket extraction fallback.
+      }
+    }
+
+    const firstBrace = raw.indexOf('{');
+    const lastBrace = raw.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      try {
+        return JSON.parse(raw.slice(firstBrace, lastBrace + 1));
+      } catch {
+        // Fall through to final error.
+      }
+    }
+
+    throw new Error('LLM did not return valid JSON');
   }
 }
 

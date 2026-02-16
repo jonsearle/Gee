@@ -5,7 +5,9 @@ import session from 'express-session';
 import dotenv from 'dotenv';
 import { google } from 'googleapis';
 import { createRepository } from './repository.js';
-import { encryptToken } from './crypto.js';
+import { decryptToken, encryptToken } from './crypto.js';
+import { runForUser } from './daily-core.js';
+import { config } from './config.js';
 
 dotenv.config();
 
@@ -175,6 +177,42 @@ app.post('/api/preferences', requireAuth, async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ error: err.message || 'failed to update preferences' });
+  }
+});
+
+app.post('/api/send-now', requireAuth, async (req, res) => {
+  try {
+    const user = await repo.getUserById(req.session.userId);
+    if (!user) return res.status(404).json({ error: 'user not found' });
+    if (!user.google_refresh_token_enc) {
+      return res.status(400).json({ error: 'Google refresh token missing. Please reconnect your Google account.' });
+    }
+
+    const stateRow = await repo.getUserState(user.id);
+    const refreshToken = decryptToken(user.google_refresh_token_enc, config.security.tokenEncryptionKey);
+
+    const nextState = await runForUser({
+      appConfig: config,
+      user: {
+        email: user.email,
+        name: user.name,
+        toEmail: user.email,
+        sendHourUtc: user.send_hour_utc,
+      },
+      refreshToken,
+      state: {
+        firstRunCompleted: stateRow?.first_run_completed || false,
+        lastRunAt: stateRow?.last_run_at || null,
+        lastThreadIds: Array.isArray(stateRow?.last_thread_ids) ? stateRow.last_thread_ids : [],
+      },
+      forceWelcomeEmail: false,
+      dryRun: false,
+    });
+
+    await repo.saveUserState(user.id, nextState);
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to send summary' });
   }
 });
 

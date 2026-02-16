@@ -1,18 +1,9 @@
 const signedOut = document.getElementById('signedOut');
 const signedIn = document.getElementById('signedIn');
 const whoami = document.getElementById('whoami');
-const toggle = document.getElementById('autoSendToggle');
-const sendHour = document.getElementById('sendHour');
-const saveBtn = document.getElementById('saveBtn');
+const sendNowBtn = document.getElementById('sendNowBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const statusText = document.getElementById('statusText');
-
-for (let h = 0; h <= 23; h += 1) {
-  const opt = document.createElement('option');
-  opt.value = String(h);
-  opt.textContent = `${String(h).padStart(2, '0')}:00 UTC`;
-  sendHour.appendChild(opt);
-}
 
 function setStatus(text, isError = false) {
   statusText.textContent = text;
@@ -32,34 +23,33 @@ async function loadSession() {
   signedOut.classList.add('hidden');
   signedIn.classList.remove('hidden');
   whoami.textContent = `Signed in as ${data.user.name} (${data.user.email})`;
-
-  const prefRes = await fetch('/api/preferences');
-  const pref = await prefRes.json();
-
-  toggle.checked = Boolean(pref.autoSendDailyEmail);
-  sendHour.value = String(pref.sendHourUtc ?? 9);
-  setStatus(data.user.hasRefreshToken ? 'Connected successfully.' : 'Connected, but refresh token missing. Re-connect Google.', !data.user.hasRefreshToken);
+  statusText.textContent = '';
+  if (!data.user.hasRefreshToken) {
+    setStatus('Connected, but refresh token missing. Re-connect Google.', true);
+  }
 }
 
-async function savePreferences() {
-  setStatus('Saving...');
+async function sendNow() {
+  setStatus('Sending your summary now...');
+  sendNowBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/preferences', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        autoSendDailyEmail: toggle.checked,
-        sendHourUtc: Number(sendHour.value),
-      }),
-    });
+    const res = await fetch('/api/send-now', { method: 'POST' });
+    const contentType = res.headers.get('content-type') || '';
+    const isJson = contentType.includes('application/json');
+    const data = isJson ? await res.json() : { error: await res.text() };
+    if (!res.ok) throw new Error(data.error || 'Failed to send summary');
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Save failed');
-
-    setStatus(`Saved. Daily email is ${data.autoSendDailyEmail ? 'ON' : 'OFF'} at ${String(data.sendHourUtc).padStart(2, '0')}:00 UTC.`);
+    setStatus('Summary sent. Check your email.');
   } catch (err) {
-    setStatus(err.message || 'Save failed', true);
+    const msg = String(err.message || 'Failed to send summary');
+    if (msg.includes('<!DOCTYPE') || msg.includes('<html')) {
+      setStatus('Server returned HTML instead of API JSON. Restart `npm run start:web` and try again.', true);
+    } else {
+      setStatus(msg, true);
+    }
+  } finally {
+    sendNowBtn.disabled = false;
   }
 }
 
@@ -68,6 +58,6 @@ async function logout() {
   window.location.reload();
 }
 
-saveBtn.addEventListener('click', savePreferences);
-logoutBtn.addEventListener('click', logout);
+sendNowBtn?.addEventListener('click', sendNow);
+logoutBtn?.addEventListener('click', logout);
 loadSession().catch((err) => setStatus(err.message || 'Failed to load session', true));

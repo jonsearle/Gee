@@ -1,35 +1,21 @@
-# Gee
+# Gee (Netlify Functions)
 
-Gee sends a once-daily planning email using read-only Gmail + Calendar context.
+Gee sends a once-daily planning email from read-only Gmail + Calendar context.
 
-Current architecture supports:
-- Google sign-in onboarding UI
-- Per-user preferences (auto send + UTC hour)
-- Supabase-backed user/token storage
-- Scheduled multi-user daily runs
+## Architecture
+
+- Static UI from `/web`
+- Netlify Functions for auth + API
+- Supabase for users + encrypted Google refresh tokens + run state
 - Resend for outbound email
+- OpenAI for synthesis
 
-## Safety model
+## Required env vars
 
-Google scopes:
-- `openid`
-- `email`
-- `profile`
-- `https://www.googleapis.com/auth/gmail.readonly`
-- `https://www.googleapis.com/auth/calendar.readonly`
+Set these in local `.env` and in Netlify site environment variables:
 
-No Gmail send/modify permissions are requested.
-
-## 1. Environment
-
-Copy template:
-
-```bash
-cp .env.example .env
-```
-
-Fill required values in `.env`:
 - `OPENAI_API_KEY`
+- `OPENAI_MODEL` (optional, default `gpt-4.1-mini`)
 - `RESEND_API_KEY`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
@@ -37,63 +23,71 @@ Fill required values in `.env`:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `GEE_TOKEN_ENCRYPTION_KEY` (`openssl rand -base64 32`)
-- `GEE_SESSION_SECRET`
+- `GEE_SESSION_SECRET` (`openssl rand -base64 32`)
+- `GEE_FROM_NAME`
 - `GEE_FROM_EMAIL`
+- `GEE_BASE_URL`
+- `GEE_DRY_RUN` (optional)
+- `FORCE_WELCOME_EMAIL` (optional)
+- `GEE_SCHEDULE_HOUR_OVERRIDE` (optional)
 
-## 2. Supabase schema
+## Supabase setup
 
-Run SQL in Supabase SQL editor:
+1. Open Supabase SQL Editor.
+2. Run `/Users/jonsearle/Desktop/codex-prototype/Gee/supabase/schema.sql`.
 
-`/Users/jonsearle/Desktop/codex-prototype/Gee/supabase/schema.sql`
+## Google OAuth setup
 
-## 3. Google OAuth setup
+In your Google OAuth Web client add redirect URIs:
 
-In Google Cloud OAuth client, add redirect URIs:
-- Local: `http://localhost:8787/auth/google/callback`
-- Netlify: `https://<your-site>.netlify.app/auth/google/callback`
+- Local dev: `http://localhost:8790/auth/google/callback`
+- Netlify prod: `https://<your-site>.netlify.app/auth/google/callback`
 
-Ensure your OAuth consent screen is External and test users are added.
+Scopes used:
 
-## 4. Run locally
+- `openid`
+- `email`
+- `profile`
+- `https://www.googleapis.com/auth/gmail.readonly`
+- `https://www.googleapis.com/auth/calendar.readonly`
 
-Install deps:
+## Local run (Netlify-style)
+
+1. Install dependencies:
 
 ```bash
 npm install
 ```
 
-Start web app:
+2. Run Netlify dev:
 
 ```bash
-npm run start:web
+npx netlify dev
 ```
 
-Open:
+3. Open `http://localhost:8790`.
 
-`http://localhost:8787`
-
-Sign in with Google and save preferences.
-
-Run scheduled worker manually:
-
-```bash
-npm run run:scheduled
-```
-
-## 5. Netlify deployment (lean path)
+## Deploy to Netlify
 
 1. Push repo to GitHub.
 2. Create Netlify site from repo.
-3. Build command: none (or `npm ci`).
-4. Publish directory: not required for Node server mode; for Netlify Functions refactor, do that next.
-5. Add all `.env` values as Netlify environment variables.
-6. Configure cron/scheduled trigger to run `npm run run:scheduled` externally (for now use GitHub Actions/cron runner).
+3. Netlify will use `netlify.toml`:
+   - publish dir: `web`
+   - functions dir: `netlify/functions`
+   - redirects for `/auth/*` and `/api/*`
+4. Add all env vars in Netlify site settings.
+5. Redeploy.
 
-Note:
-- This repo currently uses an Express web server. Netlify-native runtime requires a small Functions refactor. For immediate uptime tonight, deploy web on a Node host (Railway/Render/Fly) and keep Netlify for static landing until refactor.
+## Endpoints
 
-## Commands
+- `GET /auth/google/start`
+- `GET /auth/google/callback`
+- `POST /auth/logout`
+- `GET /api/me`
+- `POST /api/send-now`
+- `GET /api/scheduled-send` (manual trigger)
 
-- Single-user local test run: `npm start`
-- Web app: `npm run start:web`
-- Multi-user scheduled run: `npm run run:scheduled`
+## Scheduled sends
+
+`scheduled-send` function is configured hourly in `netlify.toml` and only sends for users whose `send_hour_utc` matches the current UTC hour.
+

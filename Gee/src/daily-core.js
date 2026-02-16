@@ -69,7 +69,7 @@ export async function runForUser({
   });
 
   const subject = isFirstRun
-    ? `Welcome to Gee: your daily plan for ${new Date().toLocaleDateString()}`
+    ? `Welcome to G: your daily plan for ${new Date().toLocaleDateString()}`
     : `Daily plan for ${new Date().toLocaleDateString()}`;
 
   if (dryRun) {

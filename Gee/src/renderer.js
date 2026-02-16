@@ -50,7 +50,7 @@ export function renderDailyEmail({ userName, plan, isFirstRun = false, nextSendU
   }
 
   lines.push('');
-  lines.push('— Gee');
+  lines.push('— G');
 
   return lines.join('\n');
 }

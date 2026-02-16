@@ -3,39 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gee</title>
+    <title>G</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="card">
-      <img src="/icon.svg" alt="Gee" class="icon" />
-      <h1>Gee</h1>
-      <p class="subtitle">A calm daily planning email from your Gmail + Calendar context.</p>
-
       <section id="signedOut" class="panel">
-        <p>Sign in with Google to connect read-only Gmail + Calendar access.</p>
-        <a class="btn primary" href="/auth/google/start">Sign in with Google</a>
-        <p class="fine">Gee is read-only for Gmail and Calendar. It does not modify inbox or events.</p>
+        <img src="/gee-logo.png" alt="G logo" class="hero-logo" />
+        <p class="subtitle">Your daily assistant to help you stay on top of your busy life.</p>
+        <p class="signin-copy">Sign in with Google to connect your Gmail and Calendar.</p>
+        <a class="btn primary signin-btn" href="/auth/google/start">Sign in with Google</a>
+        <p class="fine">G is read-only for Gmail and Calendar. It does not modify your inbox or events.</p>
       </section>
 
       <section id="signedIn" class="panel hidden">
+        <img src="/gee-logo.png" alt="G logo" class="hero-logo" />
+        <p class="subtitle">You're are all set up. We're ready to send you a plan everyday.</p>
         <p id="whoami" class="whoami"></p>
 
-        <label class="toggleRow">
-          <div>
-            <div class="toggleTitle">Send me my daily Gee email automatically</div>
-            <div class="toggleHelp">Turn off to pause daily sends.</div>
-          </div>
-          <input id="autoSendToggle" type="checkbox" class="switch" />
-        </label>
-
-        <label class="field">
-          <span>Send hour (UTC)</span>
-          <select id="sendHour"></select>
-        </label>
-
-        <div class="actions">
-          <button id="saveBtn" class="btn primary">Save preferences</button>
+        <div class="actions center">
+          <button id="sendNowBtn" class="btn primary">Send me my summary now</button>
           <button id="logoutBtn" class="btn">Log out</button>
         </div>
 
