@@ -1,0 +1,19 @@
+{
+  "name": "gee",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "start:web": "node src/server.js"
+  },
+  "dependencies": {
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "googleapis": "^148.0.0",
+    "html-to-text": "^9.0.5",
+    "openai": "^4.80.0",
+    "resend": "^4.1.2"
+  }
+}
