@@ -1,67 +1,68 @@
-# Gee (v1)
+# Gee
 
-Gee is a read-only daily planning agent for Google Workspace (Gmail + Calendar).
-It sends one daily email summary via Resend and does not modify inbox state.
+Gee sends a once-daily planning email using read-only Gmail + Calendar context.
 
-## What v1 does
+Current architecture supports:
+- Google sign-in onboarding UI
+- Per-user preferences (auto send + UTC hour)
+- Supabase-backed user/token storage
+- Scheduled multi-user daily runs
+- Resend for outbound email
 
-- Reads Gmail threads (7 days on first run, then incremental-ish via recent + unseen thread IDs)
-- Reads Calendar events for today + tomorrow
-- Optionally reads events on dates referenced in recent emails
-- Synthesizes a daily plan with one LLM call
-- Sends one plain-text email signed `Gee`
-- Sends a first-run welcome email that confirms the next scheduled send time
-- Includes a simple per-user preferences page to toggle daily email on/off
+## Safety model
 
-## Constraints respected
+Google scopes:
+- `openid`
+- `email`
+- `profile`
+- `https://www.googleapis.com/auth/gmail.readonly`
+- `https://www.googleapis.com/auth/calendar.readonly`
 
-- Gmail read-only fetch for inbox content
-- Calendar read-only fetch
-- No labels, stars, archive, read/unread changes
-- No replies, no task system
+No Gmail send/modify permissions are requested.
 
-## Setup
+## 1. Environment
 
-1. Create a Google Cloud project and OAuth credentials.
-2. Enable Gmail API and Google Calendar API.
-3. Grant these scopes during OAuth consent:
-   - `https://www.googleapis.com/auth/gmail.readonly`
-   - `https://www.googleapis.com/auth/calendar.readonly`
-4. Obtain a refresh token for your user.
-5. Create a Resend account, verify a sending domain/address, and generate an API key.
-6. Copy `.env.example` to `.env` and fill values.
-7. Install deps and run:
+Copy template:
 
 ```bash
-npm install
-npm start
+cp .env.example .env
 ```
 
-## Environment variables
-
-See `.env.example`.
-
-Key vars:
+Fill required values in `.env`:
 - `OPENAI_API_KEY`
-- `OPENAI_MODEL` (default `gpt-4.1-mini`)
 - `RESEND_API_KEY`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_REDIRECT_URI`
-- `GOOGLE_REFRESH_TOKEN`
-- `GEE_USER_EMAIL`
-- `GEE_USER_NAME`
-- `GEE_TO_EMAIL` (optional; defaults to user email)
-- `GEE_FROM_EMAIL` (required; must be a verified Resend sender)
-- `GEE_DAILY_SEND_HOUR_UTC` (default `9`, i.e. 9:00 a.m. GMT)
-- `GEE_DRY_RUN=true` to print instead of send
-- `FORCE_WELCOME_EMAIL=true` to force the welcome-format email for testing
-- `GEE_PREFERENCES_FILE` (default `.gee-preferences.json`)
-- `GEE_WEB_PORT` (default `8787`)
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `GEE_TOKEN_ENCRYPTION_KEY` (`openssl rand -base64 32`)
+- `GEE_SESSION_SECRET`
+- `GEE_FROM_EMAIL`
 
-## Preferences page
+## 2. Supabase schema
 
-Run:
+Run SQL in Supabase SQL editor:
+
+`/Users/jonsearle/Desktop/codex-prototype/Gee/supabase/schema.sql`
+
+## 3. Google OAuth setup
+
+In Google Cloud OAuth client, add redirect URIs:
+- Local: `http://localhost:8787/auth/google/callback`
+- Netlify: `https://<your-site>.netlify.app/auth/google/callback`
+
+Ensure your OAuth consent screen is External and test users are added.
+
+## 4. Run locally
+
+Install deps:
+
+```bash
+npm install
+```
+
+Start web app:
 
 ```bash
 npm run start:web
@@ -71,42 +72,28 @@ Open:
 
 `http://localhost:8787`
 
-Current v1 controls:
-- Email identity (per-user key)
-- Toggle: `Send me my daily Gee email automatically`
+Sign in with Google and save preferences.
 
-Notes:
-- This is intentionally lightweight and does not include authentication yet.
-- Replace `/web/icon.svg` with your own icon when ready.
-
-## Run daily
-
-Use any scheduler, for example cron:
+Run scheduled worker manually:
 
 ```bash
-0 9 * * * cd /Users/jonsearle/Desktop/codex-prototype/Gee && TZ=UTC /usr/bin/env node src/index.js >> gee.log 2>&1
+npm run run:scheduled
 ```
 
-## v1 shortcuts / intentional simplifications
+## 5. Netlify deployment (lean path)
 
-- Uses lightweight thread-ID memory instead of Gmail history sync
-- Uses simple regex date extraction from email text
-- Uses plain-text email output only
-- Uses one LLM prompt for synthesis + writing
-
-These are intentional to keep build time to hours.
-
-## Netlify Go-Live (fast path)
-
-Use Netlify for hosting the preferences/home web app, and use a scheduled function for the daily run.
-
-1. Push this repo to GitHub.
-2. Create a Netlify site connected to the repo.
-3. Add all env vars from `.env.example` in Netlify Site settings.
-4. Ensure `GEE_FROM_EMAIL` is verified in Resend.
-5. In Google Cloud OAuth settings, add Netlify callback URLs you use.
-6. Set a daily schedule at 9:00 UTC (09:00 GMT in winter; 10:00 BST in summer if you want local UK 9).
+1. Push repo to GitHub.
+2. Create Netlify site from repo.
+3. Build command: none (or `npm ci`).
+4. Publish directory: not required for Node server mode; for Netlify Functions refactor, do that next.
+5. Add all `.env` values as Netlify environment variables.
+6. Configure cron/scheduled trigger to run `npm run run:scheduled` externally (for now use GitHub Actions/cron runner).
 
 Note:
-- Current code is single-user `.env` based for agent execution.
-- For full multi-user production, move user tokens/preferences into a database and run per-user in the daily job.
+- This repo currently uses an Express web server. Netlify-native runtime requires a small Functions refactor. For immediate uptime tonight, deploy web on a Node host (Railway/Render/Fly) and keep Netlify for static landing until refactor.
+
+## Commands
+
+- Single-user local test run: `npm start`
+- Web app: `npm run start:web`
+- Multi-user scheduled run: `npm run run:scheduled`

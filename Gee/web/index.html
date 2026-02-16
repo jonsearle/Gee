@@ -3,32 +3,42 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gee Preferences</title>
+    <title>Gee</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="card">
       <img src="/icon.svg" alt="Gee" class="icon" />
-      <h1>Gee Preferences</h1>
-      <p class="subtitle">Control your daily planning email.</p>
+      <h1>Gee</h1>
+      <p class="subtitle">A calm daily planning email from your Gmail + Calendar context.</p>
 
-      <label class="field">
-        <span>Email</span>
-        <input id="emailInput" type="email" placeholder="you@example.com" />
-      </label>
+      <section id="signedOut" class="panel">
+        <p>Sign in with Google to connect read-only Gmail + Calendar access.</p>
+        <a class="btn primary" href="/auth/google/start">Sign in with Google</a>
+        <p class="fine">Gee is read-only for Gmail and Calendar. It does not modify inbox or events.</p>
+      </section>
 
-      <button id="loadBtn" class="btn">Load Preferences</button>
+      <section id="signedIn" class="panel hidden">
+        <p id="whoami" class="whoami"></p>
 
-      <section id="prefsPanel" class="prefs hidden">
         <label class="toggleRow">
           <div>
             <div class="toggleTitle">Send me my daily Gee email automatically</div>
-            <div class="toggleHelp">When off, Gee will not send your daily to-do email.</div>
+            <div class="toggleHelp">Turn off to pause daily sends.</div>
           </div>
           <input id="autoSendToggle" type="checkbox" class="switch" />
         </label>
 
-        <button id="saveBtn" class="btn primary">Save</button>
+        <label class="field">
+          <span>Send hour (UTC)</span>
+          <select id="sendHour"></select>
+        </label>
+
+        <div class="actions">
+          <button id="saveBtn" class="btn primary">Save preferences</button>
+          <button id="logoutBtn" class="btn">Log out</button>
+        </div>
+
         <p id="statusText" class="status"></p>
       </section>
     </main>

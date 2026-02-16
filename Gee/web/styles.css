@@ -8,9 +8,7 @@
   --border: #d9e6de;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
@@ -24,7 +22,7 @@ body {
 }
 
 .card {
-  width: min(560px, 100%);
+  width: min(640px, 100%);
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 20px;
@@ -32,32 +30,20 @@ body {
   box-shadow: 0 14px 35px rgba(24, 56, 38, 0.08);
 }
 
-.icon {
-  width: 56px;
-  height: 56px;
-  display: block;
-}
+.icon { width: 56px; height: 56px; display: block; }
+h1 { margin: 14px 0 6px; }
+.subtitle { margin: 0 0 18px; color: var(--muted); }
 
-h1 {
-  margin: 14px 0 6px;
-}
+.panel { margin-top: 14px; }
+.hidden { display: none; }
 
-.subtitle {
-  margin: 0 0 18px;
-  color: var(--muted);
-}
-
-.field {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-input[type="email"] {
+.field { display: grid; gap: 8px; margin-bottom: 12px; }
+input, select {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px 12px;
   font: inherit;
+  background: #fff;
 }
 
 .btn {
@@ -67,6 +53,8 @@ input[type="email"] {
   font: inherit;
   background: #fff;
   cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
 }
 
 .btn.primary {
@@ -75,19 +63,9 @@ input[type="email"] {
   color: #fff;
 }
 
-.btn.primary:hover {
-  background: var(--accent-strong);
-}
+.btn.primary:hover { background: var(--accent-strong); }
 
-.prefs {
-  margin-top: 18px;
-  border-top: 1px solid var(--border);
-  padding-top: 16px;
-}
-
-.hidden {
-  display: none;
-}
+.fine { margin-top: 10px; color: var(--muted); font-size: 14px; }
 
 .toggleRow {
   display: flex;
@@ -97,22 +75,9 @@ input[type="email"] {
   margin-bottom: 16px;
 }
 
-.toggleTitle {
-  font-weight: 600;
-}
-
-.toggleHelp {
-  color: var(--muted);
-  font-size: 14px;
-  margin-top: 4px;
-}
-
-.switch {
-  width: 52px;
-  height: 28px;
-}
-
-.status {
-  min-height: 22px;
-  color: var(--muted);
-}
+.toggleTitle { font-weight: 600; }
+.toggleHelp { color: var(--muted); font-size: 14px; margin-top: 4px; }
+.switch { width: 52px; height: 28px; }
+.actions { display: flex; gap: 10px; margin-top: 8px; }
+.status { min-height: 22px; color: var(--muted); margin-top: 12px; }
+.whoami { color: var(--muted); margin-bottom: 14px; }

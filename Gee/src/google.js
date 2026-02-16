@@ -1,14 +1,17 @@
 import { google } from 'googleapis';
 
-export function createGoogleClients(googleConfig) {
+export function createGoogleClients(googleConfig, refreshTokenOverride = '') {
   const auth = new google.auth.OAuth2(
     googleConfig.clientId,
     googleConfig.clientSecret,
     googleConfig.redirectUri,
   );
 
+  const refreshToken = refreshTokenOverride || googleConfig.refreshToken;
+  if (!refreshToken) throw new Error('Missing Google refresh token');
+
   auth.setCredentials({
-    refresh_token: googleConfig.refreshToken,
+    refresh_token: refreshToken,
   });
 
   return {
