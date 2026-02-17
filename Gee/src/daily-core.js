@@ -8,6 +8,17 @@ import { createLlmClient, synthesizeDailyPlan } from './llm.js';
 import { renderDailyEmail, renderDailyEmailHtml } from './renderer.js';
 import { createResendClient, sendSummaryEmail } from './resend.js';
 
+function formatHumanDateUtc(d) {
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'UTC' }).format(d);
+  const month = new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' }).format(d);
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${weekday} ${day} ${month}`;
+}
+
+function utcMidnight(d) {
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
 function nextSendUtcText(dailySendHourUtc) {
   const now = new Date();
   const next = new Date(Date.UTC(
@@ -21,14 +32,13 @@ function nextSendUtcText(dailySendHourUtc) {
   ));
   if (next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1);
 
-  const dateStr = new Intl.DateTimeFormat('en-US', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC',
-  }).format(next);
   const timeStr = new Intl.DateTimeFormat('en-US', {
     hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC',
   }).format(next);
+  const daysAway = Math.round((utcMidnight(next) - utcMidnight(now)) / (24 * 60 * 60 * 1000));
 
-  return `${dateStr} at ${timeStr} GMT`;
+  if (daysAway === 1) return `tomorrow at ${timeStr} GMT`;
+  return `${formatHumanDateUtc(next)} at ${timeStr} GMT`;
 }
 
 export async function runForUser({
@@ -75,9 +85,10 @@ export async function runForUser({
     nextSendUtcText: nextSendUtcText(user.sendHourUtc),
   });
 
+  const todayHuman = formatHumanDateUtc(new Date());
   const subject = isFirstRun
-    ? `Welcome to G: your daily plan for ${new Date().toLocaleDateString()}`
-    : `Daily plan for ${new Date().toLocaleDateString()}`;
+    ? `Welcome to G: your daily plan for ${todayHuman}`
+    : `Daily plan for ${todayHuman}`;
 
   if (dryRun) {
     console.log(`--- GEE DRY RUN (${user.email}) ---`);
