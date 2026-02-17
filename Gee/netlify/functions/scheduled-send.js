@@ -47,6 +47,12 @@ export const handler = async () => {
               fromEmail: appEnv.delivery.fromEmail,
               fromName: appEnv.delivery.fromName,
             },
+            security: {
+              sessionSecret: appEnv.security.sessionSecret,
+            },
+            web: {
+              baseUrl: appEnv.web.baseUrl,
+            },
           },
           user: {
             id: row.id,
