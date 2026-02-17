@@ -3,3 +3,7 @@ node_modules
 Gee/.env
 Gee/.gee-*.json
 Gee/dist
+
+# Local preview artifacts
+Gee/.gee-last-email-preview.*
+Gee/Gee/.gee-last-email-preview.*
