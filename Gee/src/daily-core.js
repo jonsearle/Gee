@@ -1,10 +1,11 @@
 import { formatISO } from 'date-fns';
+import fs from 'node:fs/promises';
 import { createGoogleClients } from './google.js';
 import { fetchRelevantEmails } from './gmail.js';
 import { extractReferencedDates } from './cleaner.js';
 import { fetchCalendarContext } from './calendar.js';
 import { createLlmClient, synthesizeDailyPlan } from './llm.js';
-import { renderDailyEmail } from './renderer.js';
+import { renderDailyEmail, renderDailyEmailHtml } from './renderer.js';
 import { createResendClient, sendSummaryEmail } from './resend.js';
 
 function nextSendUtcText(dailySendHourUtc) {
@@ -67,6 +68,12 @@ export async function runForUser({
     isFirstRun,
     nextSendUtcText: nextSendUtcText(user.sendHourUtc),
   });
+  const html = renderDailyEmailHtml({
+    userName: user.name,
+    plan,
+    isFirstRun,
+    nextSendUtcText: nextSendUtcText(user.sendHourUtc),
+  });
 
   const subject = isFirstRun
     ? `Welcome to G: your daily plan for ${new Date().toLocaleDateString()}`
@@ -76,6 +83,9 @@ export async function runForUser({
     console.log(`--- GEE DRY RUN (${user.email}) ---`);
     console.log(subject);
     console.log(text);
+    await fs.writeFile('.gee-last-email-preview.txt', `${subject}\n\n${text}\n`, 'utf8');
+    await fs.writeFile('.gee-last-email-preview.html', html, 'utf8');
+    console.log('Wrote preview files: .gee-last-email-preview.txt, .gee-last-email-preview.html');
   } else {
     await sendSummaryEmail(resend, {
       to: user.toEmail,
@@ -83,6 +93,7 @@ export async function runForUser({
       fromName: appConfig.delivery.fromName,
       subject,
       plainText: text,
+      html,
     });
   }
 
