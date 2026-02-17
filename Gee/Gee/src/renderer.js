@@ -1,19 +1,23 @@
 function getMainItems(plan) {
   return plan.mainThings.length
     ? plan.mainThings.slice(0, 5)
-    : [{ title: 'Confirm your top priority outcome for today', detail: 'Start with one concrete result by noon.' }];
+    : [{
+      title: 'Pick one top outcome for today',
+      detail: 'Try to finish one concrete result before lunch.',
+      helpLinks: [],
+    }];
 }
 
 function getCanWaitItems(plan) {
   return plan.canWait.length
     ? plan.canWait
-    : ['Non-urgent follow-ups can wait until after your priority commitments are complete.'];
+    : ['Non-urgent follow-ups can wait until your top task is done.'];
 }
 
 function getWorkstreams(plan) {
   return plan.observedWorkstreams?.length
     ? plan.observedWorkstreams
-    : ['A mix of meeting coordination, short confirmations, and follow-ups with time-sensitive dependencies.'];
+    : ['I can see a mix of coordination, short confirmations, and follow-ups.'];
 }
 
 function escapeHtml(text) {
@@ -34,6 +38,18 @@ function renderHtmlList(items, formatItem = (x) => x) {
   return `<ul style="margin:0;padding:0 0 0 20px;color:#0f172a;font:400 15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">${rows}</ul>`;
 }
 
+function normalizeHelpLinks(item) {
+  return Array.isArray(item?.helpLinks)
+    ? item.helpLinks
+        .map((link) => ({
+          label: String(link?.label || '').trim() || 'Open link',
+          href: String(link?.href || '').trim(),
+        }))
+        .filter((link) => /^https?:\/\//i.test(link.href))
+        .slice(0, 3)
+    : [];
+}
+
 export function renderDailyEmail({
   userName,
   plan,
@@ -48,21 +64,23 @@ export function renderDailyEmail({
 
   lines.push(`Good morning, ${userName}`);
   lines.push('');
-  lines.push(plan.contextSentence || 'Today has a few moving parts, but a clear order will keep it manageable.');
+  lines.push(plan.contextSentence || 'Quiet day overall. A clear order will help.');
   lines.push('');
 
-  lines.push('MAIN THINGS TO GET DONE TODAY');
+  lines.push('Main things to get done today');
   for (const [index, item] of main.entries()) {
     lines.push(`${index + 1}. ${item.title}${item.detail ? ` (${item.detail})` : ''}`);
+    const links = normalizeHelpLinks(item);
+    for (const link of links) lines.push(`   - ${link.label}: ${link.href}`);
   }
   lines.push('');
 
-  lines.push('PRIORITIZE FIRST');
+  lines.push('Prioritize first');
   lines.push(microNudge);
   lines.push('');
 
   if (isFirstRun) {
-    lines.push('WHAT I AM SEEING SO FAR');
+    lines.push('What I am seeing so far');
     for (const item of getWorkstreams(plan)) lines.push(`- ${item}`);
     lines.push('');
 
@@ -74,12 +92,12 @@ export function renderDailyEmail({
     lines.push('');
   }
 
-  lines.push('THINGS THAT CAN SAFELY WAIT');
+  lines.push('Things that can safely wait');
   for (const item of canWait) lines.push(`- ${item}`);
 
   if (plan.efficiencySuggestions.length) {
     lines.push('');
-    lines.push('EFFICIENCY SUGGESTIONS');
+    lines.push('Efficiency suggestions');
     for (const item of plan.efficiencySuggestions) lines.push(`- ${item}`);
   }
 
@@ -105,11 +123,19 @@ export function renderDailyEmailHtml({
 }) {
   const main = getMainItems(plan);
   const canWait = getCanWaitItems(plan);
-  const microNudge = plan.microNudge || 'If you only do one thing today, finish the most time-sensitive commitment first.';
+  const microNudge = plan.microNudge || 'If you only do one thing today, finish the most time-sensitive task first.';
 
   const mainList = renderHtmlList(
     main,
-    (item) => `<strong>${escapeHtml(item.title)}</strong>${item.detail ? ` <span style="color:#475569;">(${escapeHtml(item.detail)})</span>` : ''}`,
+    (item) => {
+      const links = normalizeHelpLinks(item);
+      const linksHtml = links.length
+        ? `<div style="margin-top:6px;font:500 13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+             ${links.map((link) => `<a href="${escapeHtml(link.href)}" style="display:inline-block;margin:0 8px 6px 0;padding:2px 8px;border:1px solid #cbd5e1;border-radius:999px;color:#0369a1;text-decoration:none;">${escapeHtml(link.label)}</a>`).join('')}
+           </div>`
+        : '';
+      return `<strong>${escapeHtml(item.title)}</strong>${item.detail ? ` <span style="color:#475569;">(${escapeHtml(item.detail)})</span>` : ''}${linksHtml}`;
+    },
   );
 
   const canWaitList = renderHtmlList(canWait, (item) => escapeHtml(item));
@@ -147,7 +173,7 @@ export function renderDailyEmailHtml({
               <td style="padding:22px 22px 10px;background:#f1f5f9;">
                 <p style="margin:0 0 8px;font:700 22px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#0f172a;">Good morning, ${escapeHtml(userName)}</p>
                 <p style="margin:0;font:400 15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#334155;">
-                  ${escapeHtml(plan.contextSentence || 'Today has a few moving parts, but a clear order will keep it manageable.')}
+                  ${escapeHtml(plan.contextSentence || 'Quiet day overall. A clear order will help.')}
                 </p>
               </td>
             </tr>

@@ -1,0 +1,23 @@
+{
+  "name": "gee",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "start:web": "node src/server.js",
+    "run:scheduled": "node src/run-scheduled.js",
+    "dev:netlify": "netlify dev"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "googleapis": "^148.0.0",
+    "html-to-text": "^9.0.5",
+    "openai": "^4.80.0",
+    "resend": "^4.1.2"
+  }
+}

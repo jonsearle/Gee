@@ -54,5 +54,6 @@ async function listEvents(calendar, timeMin, timeMax, maxResults) {
     end: evt.end?.dateTime || evt.end?.date,
     location: evt.location || '',
     attendeesCount: Array.isArray(evt.attendees) ? evt.attendees.length : 0,
+    htmlLink: evt.htmlLink || '',
   }));
 }

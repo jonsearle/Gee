@@ -147,6 +147,17 @@ export async function runForUser({
     }
   }
 
+  // Keep dry-run preview visually aligned with production emails.
+  if (dryRun && !feedbackLinks) {
+    const baseUrl = appConfig.web?.baseUrl || 'https://example.com';
+    const previewBase = `${baseUrl.replace(/\/$/, '')}/feedback?t=preview-token`;
+    feedbackLinks = {
+      helpful: `${previewBase}&a=helpful`,
+      notHelpful: `${previewBase}&a=not_helpful`,
+      detailed: previewBase,
+    };
+  }
+
   const text = renderDailyEmail({
     userName: user.name,
     plan,

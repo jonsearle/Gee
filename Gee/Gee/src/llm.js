@@ -20,8 +20,17 @@ Hard constraints:
 - Do NOT suggest inbox management tactics.
 - Do NOT mention labels/stars/archive/read status.
 - Do NOT invent facts.
-- Keep tone calm, professional, enabling.
+- Write in plain English.
+- Keep tone calm, friendly, and practical.
+- Sound helpful, not corporate.
+- Never use jargon, buzzwords, or management-speak.
+- Do not pretend to be human.
+- Keep sentences short and direct.
 - Max 5 main items.
+
+Style examples:
+- Good: "Quiet day today. Good chance to finish X before lunch."
+- Avoid: "Today is a strategic opportunity to optimize your commitments."
 
 Return ONLY valid JSON with this exact shape:
 {
@@ -29,7 +38,16 @@ Return ONLY valid JSON with this exact shape:
   "main_things": [
     {
       "title": "outcome-focused item",
-      "detail": "light grounding detail (person/date/why today)"
+      "detail": "light grounding detail (person/date/why today)",
+      "help_links": [
+        {
+          "type": "email_thread | calendar_event | url",
+          "label": "short action label",
+          "thread_id": "gmail thread id when type=email_thread",
+          "event_id": "calendar event id when type=calendar_event",
+          "url": "https URL when type=url"
+        }
+      ]
     }
   ],
   "micro_nudge": "string",
@@ -52,6 +70,16 @@ Preference signals (if present):
 - tone preferences: ${JSON.stringify(userPreferences?.tonePrefs || {})}
 
 Apply preferences only when supported by the provided data. Do not override factual grounding.
+
+For "help_links":
+- Optional, 0-3 per main item.
+- Include only when directly useful for doing the task.
+- Use only references that appear in provided data:
+  - email_thread: must use a real thread_id from EMAILS.
+  - calendar_event: must use a real event_id from CALENDAR.
+  - url: must use a real URL found in EMAILS or CALENDAR.
+- Never invent links, IDs, or URLs.
+- Keep labels short and plain (e.g. "Open thread", "Open event", "Open link").
 
 Data follows:
 EMAILS=${JSON.stringify(emails)}
@@ -89,8 +117,67 @@ function parseJsonSafely(text) {
   }
 }
 
+function collectAllowedUrls(payload) {
+  const urlRegex = /https?:\/\/[^\s<>)"']+/gi;
+  const urls = new Set();
+  const text = JSON.stringify(payload || {});
+  const matches = text.match(urlRegex) || [];
+  for (const match of matches) urls.add(match);
+  return urls;
+}
+
+function toHelpLink(link, allow) {
+  const type = String(link?.type || '').trim();
+  const label = String(link?.label || '').trim() || 'Open link';
+  const threadId = String(link?.thread_id || '').trim();
+  const eventId = String(link?.event_id || '').trim();
+  const url = String(link?.url || '').trim();
+
+  if (type === 'email_thread' && threadId && allow.threadIds.has(threadId)) {
+    return {
+      type,
+      label,
+      href: `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(threadId)}`,
+    };
+  }
+
+  if (type === 'calendar_event' && eventId && allow.eventIds.has(eventId)) {
+    const htmlLink = allow.eventLinksById.get(eventId);
+    return {
+      type,
+      label,
+      href: htmlLink || `https://calendar.google.com/calendar/u/0/r/search?q=${encodeURIComponent(eventId)}`,
+    };
+  }
+
+  if (type === 'url' && /^https?:\/\//i.test(url) && allow.urls.has(url)) {
+    return {
+      type,
+      label,
+      href: url,
+    };
+  }
+
+  return null;
+}
+
 export async function synthesizeDailyPlan(client, model, payload) {
   const prompt = buildPrompt(payload);
+  const calendarEvents = [
+    ...(payload?.calendar?.todayTomorrow || []),
+    ...(payload?.calendar?.referenced || []),
+  ];
+  const eventLinksById = new Map(
+    calendarEvents
+      .map((e) => [String(e?.id || '').trim(), String(e?.htmlLink || '').trim()])
+      .filter(([id, href]) => id && /^https?:\/\//i.test(href)),
+  );
+  const allow = {
+    threadIds: new Set((payload?.emails || []).map((e) => String(e?.threadId || '').trim()).filter(Boolean)),
+    eventIds: new Set(calendarEvents.map((e) => String(e?.id || '').trim()).filter(Boolean)),
+    eventLinksById,
+    urls: collectAllowedUrls(payload),
+  };
 
   const res = await client.responses.create({
     model,
@@ -108,6 +195,9 @@ export async function synthesizeDailyPlan(client, model, payload) {
           .map((i) => ({
             title: String(i?.title || '').trim(),
             detail: String(i?.detail || '').trim(),
+            helpLinks: Array.isArray(i?.help_links)
+              ? i.help_links.map((link) => toHelpLink(link, allow)).filter(Boolean).slice(0, 3)
+              : [],
           }))
           .filter((i) => i.title)
           .slice(0, 5)
