@@ -34,12 +34,14 @@ export const handler = async (event) => {
         },
       },
       user: {
+        id: user.id,
         email: user.email,
         name: user.name,
         toEmail: user.email,
         sendHourUtc: user.send_hour_utc,
       },
       refreshToken,
+      repo,
       state: {
         firstRunCompleted: stateRow?.first_run_completed || false,
         lastRunAt: stateRow?.last_run_at || null,

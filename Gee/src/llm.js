@@ -4,7 +4,9 @@ export function createLlmClient(apiKey) {
   return new OpenAI({ apiKey });
 }
 
-function buildPrompt({ userName, nowIso, emails, calendar, isFirstRun }) {
+function buildPrompt({
+  userName, nowIso, emails, calendar, isFirstRun, userPreferences,
+}) {
   return `You are G, a calm and pragmatic daily planning assistant.
 
 Today is ${nowIso}.
@@ -42,6 +44,14 @@ For "observed_workstreams":
 - Keep this grounded and conservative.
 
 If data is thin, still return useful conservative guidance.
+
+Preference signals (if present):
+- planning constraints: ${JSON.stringify(userPreferences?.planningConstraints || {})}
+- preferred sections/topics: ${JSON.stringify(userPreferences?.preferredSections || [])}
+- suppressed sections/topics: ${JSON.stringify(userPreferences?.suppressedSections || [])}
+- tone preferences: ${JSON.stringify(userPreferences?.tonePrefs || {})}
+
+Apply preferences only when supported by the provided data. Do not override factual grounding.
 
 Data follows:
 EMAILS=${JSON.stringify(emails)}

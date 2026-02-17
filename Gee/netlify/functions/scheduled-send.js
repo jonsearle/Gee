@@ -49,12 +49,14 @@ export const handler = async () => {
             },
           },
           user: {
+            id: row.id,
             email: row.email,
             name: row.name,
             toEmail: row.email,
             sendHourUtc: row.send_hour_utc,
           },
           refreshToken,
+          repo,
           state: {
             firstRunCompleted: stateRow?.first_run_completed || false,
             lastRunAt: stateRow?.last_run_at || null,

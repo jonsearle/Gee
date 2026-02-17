@@ -34,7 +34,13 @@ function renderHtmlList(items, formatItem = (x) => x) {
   return `<ul style="margin:0;padding:0 0 0 20px;color:#0f172a;font:400 15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">${rows}</ul>`;
 }
 
-export function renderDailyEmail({ userName, plan, isFirstRun = false, nextSendUtcText = '' }) {
+export function renderDailyEmail({
+  userName,
+  plan,
+  isFirstRun = false,
+  nextSendUtcText = '',
+  feedbackLinks = null,
+}) {
   const lines = [];
   const main = getMainItems(plan);
   const canWait = getCanWaitItems(plan);
@@ -78,11 +84,25 @@ export function renderDailyEmail({ userName, plan, isFirstRun = false, nextSendU
   }
 
   lines.push('');
+  if (feedbackLinks?.helpful && feedbackLinks?.notHelpful && feedbackLinks?.detailed) {
+    lines.push('How are we doing?');
+    lines.push(`Helpful: ${feedbackLinks.helpful}`);
+    lines.push(`Not helpful: ${feedbackLinks.notHelpful}`);
+    lines.push(`Detailed feedback: ${feedbackLinks.detailed}`);
+    lines.push('');
+  }
+
   lines.push('- G');
   return lines.join('\n');
 }
 
-export function renderDailyEmailHtml({ userName, plan, isFirstRun = false, nextSendUtcText = '' }) {
+export function renderDailyEmailHtml({
+  userName,
+  plan,
+  isFirstRun = false,
+  nextSendUtcText = '',
+  feedbackLinks = null,
+}) {
   const main = getMainItems(plan);
   const canWait = getCanWaitItems(plan);
   const microNudge = plan.microNudge || 'If you only do one thing today, finish the most time-sensitive commitment first.';
@@ -104,6 +124,15 @@ export function renderDailyEmailHtml({ userName, plan, isFirstRun = false, nextS
          ${escapeHtml(nextSendUtcText
     ? `Next daily plan email: ${nextSendUtcText} (then every morning at 9:00 a.m. GMT).`
     : 'Next daily plan email: tomorrow at 9:00 a.m. GMT (then every morning).')}
+       </p>`
+    : '';
+
+  const feedbackBlock = feedbackLinks?.helpful && feedbackLinks?.notHelpful && feedbackLinks?.detailed
+    ? `<p style="margin:20px 0 0;color:#334155;font:400 13px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+         How are we doing?
+         <a href="${escapeHtml(feedbackLinks.helpful)}" style="color:#0369a1;">Helpful</a>
+         · <a href="${escapeHtml(feedbackLinks.notHelpful)}" style="color:#0369a1;">Not helpful</a>
+         · <a href="${escapeHtml(feedbackLinks.detailed)}" style="color:#0369a1;">Give detailed feedback</a>
        </p>`
     : '';
 
@@ -132,6 +161,7 @@ export function renderDailyEmailHtml({ userName, plan, isFirstRun = false, nextS
                 ${sectionTitle('Things That Can Safely Wait')}
                 ${canWaitList}
                 ${efficiencyList}
+                ${feedbackBlock}
                 <p style="margin:20px 0 0;color:#64748b;font:500 13px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">- G</p>
               </td>
             </tr>

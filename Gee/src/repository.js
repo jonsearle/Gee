@@ -106,5 +106,116 @@ export function createRepository({ supabaseUrl, supabaseServiceRoleKey }) {
 
       if (error) throw error;
     },
+
+    async createDailyRun({ userId, subject, model, planJson }) {
+      const { data, error } = await db
+        .from('gee_daily_runs')
+        .insert({
+          user_id: userId,
+          subject,
+          model,
+          plan_json: planJson,
+        })
+        .select('*')
+        .single();
+      return mustSingle(data, error);
+    },
+
+    async createRunSections(runId, sections = []) {
+      if (!Array.isArray(sections) || !sections.length) return [];
+      const payload = sections.map((section) => ({
+        run_id: runId,
+        section_key: String(section.sectionKey || '').trim(),
+        title: String(section.title || '').trim(),
+        confidence: typeof section.confidence === 'number' ? section.confidence : null,
+        evidence_refs: Array.isArray(section.evidenceRefs) ? section.evidenceRefs : [],
+        content_json: section.contentJson || {},
+      })).filter((row) => row.section_key && row.title);
+
+      if (!payload.length) return [];
+
+      const { data, error } = await db
+        .from('gee_run_sections')
+        .insert(payload)
+        .select('*');
+      if (error) throw error;
+      return data || [];
+    },
+
+    async getDailyRunWithSections({ userId, runId }) {
+      const { data: run, error: runError } = await db
+        .from('gee_daily_runs')
+        .select('*')
+        .eq('id', runId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (runError) throw runError;
+      if (!run) return null;
+
+      const { data: sections, error: sectionsError } = await db
+        .from('gee_run_sections')
+        .select('*')
+        .eq('run_id', runId)
+        .order('created_at', { ascending: true });
+      if (sectionsError) throw sectionsError;
+
+      return {
+        run,
+        sections: sections || [],
+      };
+    },
+
+    async createFeedbackEvent({
+      userId,
+      runId = null,
+      sectionId = null,
+      feedbackType,
+      rating = null,
+      comment = '',
+      metadata = {},
+    }) {
+      const { error } = await db
+        .from('gee_feedback_events')
+        .insert({
+          user_id: userId,
+          run_id: runId,
+          section_id: sectionId,
+          feedback_type: feedbackType,
+          rating,
+          comment: String(comment || '').trim() || null,
+          metadata: metadata || {},
+        });
+      if (error) throw error;
+    },
+
+    async getUserPromptPreferences(userId) {
+      const { data, error } = await db
+        .from('gee_user_preferences')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (error) throw error;
+      return data || null;
+    },
+
+    async upsertUserPromptPreferences(userId, updates = {}) {
+      const current = await this.getUserPromptPreferences(userId);
+      const next = {
+        user_id: userId,
+        planning_constraints: updates.planningConstraints ?? current?.planning_constraints ?? {},
+        preferred_sections: updates.preferredSections ?? current?.preferred_sections ?? [],
+        suppressed_sections: updates.suppressedSections ?? current?.suppressed_sections ?? [],
+        tone_prefs: updates.tonePrefs ?? current?.tone_prefs ?? {},
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await db
+        .from('gee_user_preferences')
+        .upsert(next, { onConflict: 'user_id' })
+        .select('*')
+        .single();
+
+      return mustSingle(data, error);
+    },
   };
 }
