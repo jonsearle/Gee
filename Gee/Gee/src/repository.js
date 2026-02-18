@@ -5,6 +5,31 @@ function mustSingle(data, error) {
   return data || null;
 }
 
+function uniqueStrings(items = []) {
+  return [...new Set(
+    (Array.isArray(items) ? items : [])
+      .map((x) => String(x || '').trim())
+      .filter(Boolean),
+  )];
+}
+
+function normalizeTheme(theme) {
+  return String(theme || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .slice(0, 80);
+}
+
+function defaultSendDaysUtc() {
+  return [0, 1, 2, 3, 4, 5, 6];
+}
+
+function normalizeSendDaysUtc(value) {
+  const parsed = uniqueStrings(value).map((x) => Number(x)).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6);
+  return parsed.length ? [...new Set(parsed)].sort((a, b) => a - b) : defaultSendDaysUtc();
+}
+
 export function createRepository({ supabaseUrl, supabaseServiceRoleKey }) {
   const db = createSupabaseClients({ url: supabaseUrl, serviceRoleKey: supabaseServiceRoleKey });
 
@@ -218,6 +243,99 @@ export function createRepository({ supabaseUrl, supabaseServiceRoleKey }) {
         .maybeSingle();
       if (error) throw error;
       return data || null;
+    },
+
+    async getUserMasterPreferences(userId) {
+      const current = await this.getUserPromptPreferences(userId);
+      const planning = current?.planning_constraints || {};
+      return {
+        sendDaysUtc: normalizeSendDaysUtc(planning.sendDaysUtc),
+        moreThemes: uniqueStrings(current?.preferred_sections).map((x) => normalizeTheme(x)).filter(Boolean),
+        lessThemes: uniqueStrings(planning.lessThemes).map((x) => normalizeTheme(x)).filter(Boolean),
+        hiddenThemes: uniqueStrings(current?.suppressed_sections).map((x) => normalizeTheme(x)).filter(Boolean),
+      };
+    },
+
+    async upsertMasterPreferences(userId, { sendDaysUtc, moreThemes, lessThemes, hiddenThemes } = {}) {
+      const current = await this.getUserPromptPreferences(userId);
+      const planningConstraints = {
+        ...(current?.planning_constraints || {}),
+      };
+      if (sendDaysUtc) planningConstraints.sendDaysUtc = normalizeSendDaysUtc(sendDaysUtc);
+      if (lessThemes) planningConstraints.lessThemes = uniqueStrings(lessThemes).map((x) => normalizeTheme(x)).filter(Boolean);
+
+      const next = {
+        user_id: userId,
+        planning_constraints: planningConstraints,
+        preferred_sections: moreThemes
+          ? uniqueStrings(moreThemes).map((x) => normalizeTheme(x)).filter(Boolean)
+          : (current?.preferred_sections || []),
+        suppressed_sections: hiddenThemes
+          ? uniqueStrings(hiddenThemes).map((x) => normalizeTheme(x)).filter(Boolean)
+          : (current?.suppressed_sections || []),
+        tone_prefs: current?.tone_prefs || {},
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await db
+        .from('gee_user_preferences')
+        .upsert(next, { onConflict: 'user_id' })
+        .select('*')
+        .single();
+
+      return mustSingle(data, error);
+    },
+
+    async setThemePreference(userId, rawTheme, preference) {
+      const theme = normalizeTheme(rawTheme);
+      if (!theme) throw new Error('Theme is required');
+
+      const current = await this.getUserMasterPreferences(userId);
+      const more = new Set(current.moreThemes);
+      const less = new Set(current.lessThemes);
+      const hidden = new Set(current.hiddenThemes);
+
+      more.delete(theme);
+      less.delete(theme);
+      hidden.delete(theme);
+
+      if (preference === 'more') more.add(theme);
+      if (preference === 'less') less.add(theme);
+      if (preference === 'hidden') hidden.add(theme);
+
+      await this.upsertMasterPreferences(userId, {
+        moreThemes: [...more],
+        lessThemes: [...less],
+        hiddenThemes: [...hidden],
+      });
+
+      return {
+        theme,
+        preference,
+      };
+    },
+
+    async getRecentThemesForUser(userId, limit = 30) {
+      const { data, error } = await db
+        .from('gee_daily_runs')
+        .select('plan_json,sent_at')
+        .eq('user_id', userId)
+        .order('sent_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+
+      const themes = [];
+      for (const row of data || []) {
+        const mainThings = Array.isArray(row?.plan_json?.mainThings)
+          ? row.plan_json.mainThings
+          : [];
+        for (const item of mainThings) {
+          const normalized = normalizeTheme(item?.theme);
+          if (normalized) themes.push(normalized);
+        }
+      }
+
+      return uniqueStrings(themes);
     },
 
     async upsertUserPromptPreferences(userId, updates = {}) {

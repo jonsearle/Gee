@@ -11,6 +11,10 @@ function utcDateNow() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function utcDayNow() {
+  return new Date().getUTCDay();
+}
+
 export const handler = async () => {
   try {
     const appEnv = getAppEnv();
@@ -26,12 +30,19 @@ export const handler = async () => {
 
     const targetHour = Number.isInteger(hourOverride) ? hourOverride : utcHourNow();
     const sendDateUtc = utcDateNow();
+    const dayOfWeekUtc = utcDayNow();
     const users = await repo.listUsersForHour(targetHour);
 
     const results = [];
 
     for (const row of users) {
       try {
+        const prefs = await repo.getUserMasterPreferences(row.id);
+        if (!prefs.sendDaysUtc.includes(dayOfWeekUtc)) {
+          results.push({ email: row.email, status: 'skipped', reason: 'day not enabled' });
+          continue;
+        }
+
         const claimed = await repo.claimScheduledSend({
           userId: row.id,
           sendDateUtc,

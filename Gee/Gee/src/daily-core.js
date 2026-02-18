@@ -122,12 +122,6 @@ export async function runForUser({
         confidence: 0.75,
         contentJson: { canWait: plan.canWait },
       },
-      {
-        sectionKey: 'efficiency',
-        title: 'Efficiency suggestions',
-        confidence: 0.7,
-        contentJson: { efficiencySuggestions: plan.efficiencySuggestions },
-      },
     ]);
 
     const secret = appConfig.security?.sessionSecret || appConfig.web?.sessionSecret || '';
@@ -140,8 +134,6 @@ export async function runForUser({
       }, secret);
       const base = `${baseUrl.replace(/\/$/, '')}/feedback?t=${encodeURIComponent(token)}`;
       feedbackLinks = {
-        helpful: `${base}&a=helpful`,
-        notHelpful: `${base}&a=not_helpful`,
         detailed: base,
       };
     }
@@ -152,8 +144,6 @@ export async function runForUser({
     const baseUrl = appConfig.web?.baseUrl || 'https://example.com';
     const previewBase = `${baseUrl.replace(/\/$/, '')}/feedback?t=preview-token`;
     feedbackLinks = {
-      helpful: `${previewBase}&a=helpful`,
-      notHelpful: `${previewBase}&a=not_helpful`,
       detailed: previewBase,
     };
   }

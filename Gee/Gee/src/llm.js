@@ -37,8 +37,10 @@ Return ONLY valid JSON with this exact shape:
   "context_sentence": "string",
   "main_things": [
     {
+      "theme": "short normalized theme label",
       "title": "outcome-focused item",
       "detail": "light grounding detail (person/date/why today)",
+      "efficiency_hint": "short practical way to do this faster today",
       "help_links": [
         {
           "type": "email_thread | calendar_event | url",
@@ -52,7 +54,6 @@ Return ONLY valid JSON with this exact shape:
   ],
   "micro_nudge": "string",
   "can_wait": ["string"],
-  "efficiency_suggestions": ["string"],
   "observed_workstreams": ["string"]
 }
 
@@ -65,8 +66,9 @@ If data is thin, still return useful conservative guidance.
 
 Preference signals (if present):
 - planning constraints: ${JSON.stringify(userPreferences?.planningConstraints || {})}
-- preferred sections/topics: ${JSON.stringify(userPreferences?.preferredSections || [])}
-- suppressed sections/topics: ${JSON.stringify(userPreferences?.suppressedSections || [])}
+- preferred themes/topics: ${JSON.stringify(userPreferences?.preferredSections || [])}
+- hidden themes/topics: ${JSON.stringify(userPreferences?.suppressedSections || [])}
+- less-of themes/topics: ${JSON.stringify(userPreferences?.planningConstraints?.lessThemes || [])}
 - tone preferences: ${JSON.stringify(userPreferences?.tonePrefs || {})}
 
 Apply preferences only when supported by the provided data. Do not override factual grounding.
@@ -80,6 +82,11 @@ For "help_links":
   - url: must use a real URL found in EMAILS or CALENDAR.
 - Never invent links, IDs, or URLs.
 - Keep labels short and plain (e.g. "Open thread", "Open event", "Open link").
+
+For "theme":
+- Keep it 1-4 words.
+- Use stable labels (e.g. "career interview", "investments", "project planning").
+- Avoid dates, names, or sentence-like themes.
 
 Data follows:
 EMAILS=${JSON.stringify(emails)}
@@ -193,8 +200,10 @@ export async function synthesizeDailyPlan(client, model, payload) {
     mainThings: Array.isArray(json.main_things)
       ? json.main_things
           .map((i) => ({
+            theme: String(i?.theme || '').trim(),
             title: String(i?.title || '').trim(),
             detail: String(i?.detail || '').trim(),
+            efficiencyHint: String(i?.efficiency_hint || '').trim(),
             helpLinks: Array.isArray(i?.help_links)
               ? i.help_links.map((link) => toHelpLink(link, allow)).filter(Boolean).slice(0, 3)
               : [],
@@ -205,9 +214,6 @@ export async function synthesizeDailyPlan(client, model, payload) {
     microNudge: String(json.micro_nudge || '').trim(),
     canWait: Array.isArray(json.can_wait)
       ? json.can_wait.map((x) => String(x).trim()).filter(Boolean).slice(0, 3)
-      : [],
-    efficiencySuggestions: Array.isArray(json.efficiency_suggestions)
-      ? json.efficiency_suggestions.map((x) => String(x).trim()).filter(Boolean).slice(0, 3)
       : [],
     observedWorkstreams: Array.isArray(json.observed_workstreams)
       ? json.observed_workstreams.map((x) => String(x).trim()).filter(Boolean).slice(0, 5)

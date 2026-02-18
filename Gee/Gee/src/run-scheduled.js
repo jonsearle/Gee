@@ -11,6 +11,10 @@ function utcDateNow() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function utcDayNow() {
+  return new Date().getUTCDay();
+}
+
 async function main() {
   const repo = createRepository({
     supabaseUrl: config.supabase.url,
@@ -21,11 +25,18 @@ async function main() {
     ? config.scheduler.hourOverride
     : utcHourNow();
   const sendDateUtc = utcDateNow();
+  const dayOfWeekUtc = utcDayNow();
 
   const users = await repo.listUsersForHour(targetHour);
   console.log(`Gee scheduled run: ${users.length} user(s) at hour ${targetHour} UTC`);
 
   for (const row of users) {
+    const prefs = await repo.getUserMasterPreferences(row.id);
+    if (!prefs.sendDaysUtc.includes(dayOfWeekUtc)) {
+      console.log(`Skipping ${row.email}: day not enabled`);
+      continue;
+    }
+
     const claimed = await repo.claimScheduledSend({
       userId: row.id,
       sendDateUtc,
