@@ -58,6 +58,11 @@
   status = 200
 
 [[redirects]]
+  from = "/memory/meeting-prep"
+  to = "/.netlify/functions/memory-meeting-prep"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

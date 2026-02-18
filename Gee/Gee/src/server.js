@@ -11,6 +11,7 @@ import { config } from './config.js';
 import { createGoogleClients } from './google.js';
 import { healthSnapshot, logEvent, runMemoryQuery } from './memory-agent-v1/index.js';
 import { createLlmClient } from './llm.js';
+import { runMeetingPrep } from './memory-agent-v1/meeting-prep.js';
 
 dotenv.config();
 
@@ -296,6 +297,30 @@ app.post('/memory/event', requireAuth, async (req, res) => {
 
 app.get('/memory/health', (_req, res) => {
   res.json(healthSnapshot());
+});
+
+app.post('/memory/meeting-prep', requireAuth, async (req, res) => {
+  try {
+    const user = await repo.getUserById(req.session.userId);
+    if (!user) return res.status(404).json({ error: 'user not found' });
+    if (!user.google_refresh_token_enc) {
+      return res.status(400).json({ error: 'Google refresh token missing. Please reconnect your Google account.' });
+    }
+
+    const refreshToken = decryptToken(user.google_refresh_token_enc, config.security.tokenEncryptionKey);
+    const clients = createGoogleClients(config.google, refreshToken);
+    const response = await runMeetingPrep({
+      gmail: clients.gmail,
+      calendar: clients.calendar,
+      llm: {
+        client: llm,
+        model: config.openai.model,
+      },
+    });
+    return res.json(response);
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'meeting prep failed' });
+  }
 });
 
 app.get('*', (_req, res) => {

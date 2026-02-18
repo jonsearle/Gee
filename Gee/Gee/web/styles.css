@@ -122,6 +122,12 @@ input, select, textarea {
   padding: 14px;
 }
 
+.quick-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
 .chat-log {
   border: 1px solid #ededed;
   border-radius: 12px;

@@ -8,6 +8,7 @@ const memoryChatLog = document.getElementById('memoryChatLog');
 const memoryChatForm = document.getElementById('memoryChatForm');
 const memoryChatInput = document.getElementById('memoryChatInput');
 const memoryChatSendBtn = document.getElementById('memoryChatSendBtn');
+const meetingPrepBtn = document.getElementById('meetingPrepBtn');
 
 const sessionId = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `session_${Date.now()}`;
 let lastInteractionId = '';
@@ -181,6 +182,28 @@ async function sendMemoryQuery() {
   }
 }
 
+async function runMeetingPrep() {
+  memoryChatSendBtn.disabled = true;
+  meetingPrepBtn.disabled = true;
+  const pending = appendAssistantThinking();
+  setStatus('Preparing your next meeting context...');
+  try {
+    const res = await fetch('/memory/meeting-prep', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Meeting prep failed');
+    renderAssistantMessage(pending, data, '');
+    setStatus('');
+  } catch (err) {
+    pending.classList.remove('pending');
+    pending.innerHTML = `<div class="bubble assistant error">${escapeHtml(err.message || 'Meeting prep failed')}</div>`;
+    setStatus(err.message || 'Meeting prep failed', true);
+  } finally {
+    memoryChatSendBtn.disabled = false;
+    meetingPrepBtn.disabled = false;
+    memoryChatInput.focus();
+  }
+}
+
 memoryChatForm?.addEventListener('submit', (event) => {
   event.preventDefault();
   sendMemoryQuery().catch((err) => setStatus(err.message || 'Failed', true));
@@ -219,4 +242,5 @@ memoryChatLog?.addEventListener('click', async (event) => {
 
 sendNowBtn?.addEventListener('click', sendNow);
 logoutBtn?.addEventListener('click', logout);
+meetingPrepBtn?.addEventListener('click', () => runMeetingPrep().catch((err) => setStatus(err.message || 'Failed', true)));
 loadSession().catch((err) => setStatus(err.message || 'Failed to load session', true));
