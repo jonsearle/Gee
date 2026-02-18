@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { deriveThemeKey, themeDisplayName } from './theme-domain.js';
 
 export function createLlmClient(apiKey) {
   return new OpenAI({ apiKey });
@@ -221,13 +222,18 @@ export async function synthesizeDailyPlan(client, model, payload) {
     ? json.focus_themes
         .map((t) => ({
           id: String(t?.id || '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, ''),
+          key: deriveThemeKey(String(t?.name || ''), String(t?.summary || '')),
           name: String(t?.name || '').trim(),
           summary: String(t?.summary || '').trim(),
           anchorTerms: Array.isArray(t?.anchor_terms)
             ? t.anchor_terms.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 8)
             : [],
         }))
-        .filter((t) => t.id && t.name)
+        .filter((t) => t.id && t.key)
+        .map((t) => ({
+          ...t,
+          name: t.name || themeDisplayName(t.key),
+        }))
         .slice(0, 8)
     : [];
   const focusThemeById = new Map(focusThemes.map((t) => [t.id, t]));
@@ -245,8 +251,13 @@ export async function synthesizeDailyPlan(client, model, payload) {
         }))
         .map((i) => {
           const matchedTheme = focusThemeById.get(i.focusThemeId);
-          if (!i.theme && matchedTheme?.name) return { ...i, theme: matchedTheme.name };
-          return i;
+          const themeKey = matchedTheme?.key || deriveThemeKey(i.theme);
+          const themeLabel = matchedTheme?.name || i.theme || themeDisplayName(themeKey);
+          return {
+            ...i,
+            themeKey,
+            themeLabel,
+          };
         })
         .filter((i) => i.title)
         .slice(0, 5)
@@ -258,7 +269,7 @@ export async function synthesizeDailyPlan(client, model, payload) {
     if (theme.name) candidateThemes.push(theme.name);
   }
   for (const item of mainThings) {
-    if (item.theme) candidateThemes.push(item.theme);
+    if (item.themeLabel) candidateThemes.push(item.themeLabel);
   }
 
   return {

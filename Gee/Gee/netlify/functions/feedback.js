@@ -1,6 +1,7 @@
 import { getAppEnv } from '../../src/netlify/env.js';
 import { createRepository } from '../../src/repository.js';
 import { verifyFeedbackToken } from '../../src/feedback-token.js';
+import { themeDefaultSummary, themeDisplayName } from '../../src/theme-domain.js';
 
 function html(statusCode, body) {
   return {
@@ -47,7 +48,7 @@ function themeState(themeKey, prefs) {
 
 function renderThemeRow(themeObj, state) {
   const key = String(themeObj?.key || '').trim();
-  const name = String(themeObj?.name || key).trim();
+  const name = String(themeObj?.name || themeDisplayName(key)).trim();
   const summary = String(themeObj?.summary || '').trim();
   const example = Array.isArray(themeObj?.examples) && themeObj.examples.length
     ? ` e.g. ${themeObj.examples[0]}`
@@ -71,14 +72,7 @@ function renderThemeRow(themeObj, state) {
 }
 
 function defaultThemeSummary(themeKey) {
-  const map = {
-    'career growth': 'Interviews, applications, and career progression actions.',
-    'work execution': 'Projects, meetings, follow-ups, and delivery work.',
-    learning: 'Study, training, and skill-building tasks.',
-    'personal projects': 'Personal initiatives and side projects.',
-    finance: 'Money, investment, and financial admin topics.',
-  };
-  return map[themeKey] || '';
+  return themeDefaultSummary(themeKey);
 }
 
 function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '', error = '' }) {
@@ -92,7 +86,7 @@ function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '
 
   const hiddenRows = hiddenThemes.length
     ? hiddenThemes.map((theme) => `<li class="theme-row" data-theme="${esc(theme)}" data-state="hidden">
-      <span class="theme-chip">${esc(theme)}</span>
+      <span class="theme-chip">${esc(themeDisplayName(theme))}</span>
       <div class="theme-actions">
         <button type="button" class="action" data-pref="neutral">Show again</button>
       </div>
@@ -308,7 +302,7 @@ async function renderPreferences(repo, payload, token, message = '', error = '')
     if (!byKey.has(key)) {
       byKey.set(key, {
         key,
-        name: key,
+        name: themeDisplayName(key),
         summary: defaultThemeSummary(key),
         examples: [],
         count: 0,

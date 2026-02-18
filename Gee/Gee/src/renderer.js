@@ -82,7 +82,7 @@ export function renderDailyEmail({
   lines.push('Main things to get done today');
   for (const [index, item] of main.entries()) {
     lines.push(`${index + 1}. ${item.title}${item.detail ? ` (${item.detail})` : ''}`);
-    if (item.theme) lines.push(`   Theme: ${item.theme}`);
+    if (item.themeLabel || item.theme) lines.push(`   Theme: ${item.themeLabel || item.theme}`);
     if (item.efficiencyHint) lines.push(`   Do it efficiently: ${item.efficiencyHint}`);
     const links = normalizeHelpLinks(item);
     for (const link of links) lines.push(`   - ${link.label}: ${link.href}`);
@@ -132,8 +132,8 @@ export function renderDailyEmailHtml({
     main,
     (item) => {
       const links = normalizeHelpLinks(item);
-      const themeHtml = item.theme
-        ? `<div style="margin-top:6px;font:600 12px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#334155;">Theme: ${escapeHtml(item.theme)}</div>`
+      const themeHtml = (item.themeLabel || item.theme)
+        ? `<div style="margin-top:6px;font:600 12px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#334155;">Theme: ${escapeHtml(item.themeLabel || item.theme)}</div>`
         : '';
       const efficiencyHtml = item.efficiencyHint
         ? `<div style="margin-top:6px;font:500 13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#0f766e;">Do it efficiently: ${escapeHtml(item.efficiencyHint)}</div>`
