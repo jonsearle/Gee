@@ -5,6 +5,7 @@ import {
   themeDisplayName,
   uniqueStrings,
 } from './theme-domain.js';
+import { createEmptyWorkspace, ensureWorkspaceShape } from './workspace.js';
 
 function mustSingle(data, error) {
   if (error) throw error;
@@ -244,6 +245,37 @@ export function createRepository({ supabaseUrl, supabaseServiceRoleKey }) {
         lessThemes: uniqueStrings(planning.lessThemes).map((x) => normalizePreferenceThemeKey(x)).filter(Boolean),
         hiddenThemes: uniqueStrings(current?.suppressed_sections).map((x) => normalizePreferenceThemeKey(x)).filter(Boolean),
       };
+    },
+
+    async getWorkspaceState(userId) {
+      const current = await this.getUserPromptPreferences(userId);
+      const planning = current?.planning_constraints || {};
+      return ensureWorkspaceShape(planning.workspace_v1 || createEmptyWorkspace());
+    },
+
+    async saveWorkspaceState(userId, workspaceState) {
+      const current = await this.getUserPromptPreferences(userId);
+      const planningConstraints = {
+        ...(current?.planning_constraints || {}),
+        workspace_v1: ensureWorkspaceShape(workspaceState),
+      };
+
+      const next = {
+        user_id: userId,
+        planning_constraints: planningConstraints,
+        preferred_sections: current?.preferred_sections || [],
+        suppressed_sections: current?.suppressed_sections || [],
+        tone_prefs: current?.tone_prefs || {},
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await db
+        .from('gee_user_preferences')
+        .upsert(next, { onConflict: 'user_id' })
+        .select('*')
+        .single();
+
+      return mustSingle(data, error);
     },
 
     async upsertMasterPreferences(userId, { sendDaysUtc, moreThemes, lessThemes, hiddenThemes } = {}) {

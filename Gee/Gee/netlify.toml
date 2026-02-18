@@ -28,6 +28,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/workspace"
+  to = "/.netlify/functions/api-workspace"
+  status = 200
+
+[[redirects]]
   from = "/api/scheduled-send"
   to = "/.netlify/functions/scheduled-send"
   status = 200
