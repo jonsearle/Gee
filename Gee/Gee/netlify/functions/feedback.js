@@ -37,6 +37,15 @@ function parseJsonBody(event) {
   }
 }
 
+function headerValue(headers, name) {
+  if (!headers || typeof headers !== 'object') return '';
+  const target = String(name || '').toLowerCase();
+  for (const [k, v] of Object.entries(headers)) {
+    if (String(k).toLowerCase() === target) return String(v || '');
+  }
+  return '';
+}
+
 function esc(text) {
   return String(text || '')
     .replaceAll('&', '&amp;')
@@ -303,8 +312,16 @@ export const handler = async (event) => {
   try {
     const appEnv = getAppEnv();
 
-    if (event.httpMethod === 'POST' && String(event.headers?.['content-type'] || '').includes('application/json')) {
-      const body = parseJsonBody(event);
+    if (event.httpMethod === 'POST') {
+      const contentType = headerValue(event.headers, 'content-type');
+      const body = contentType.includes('application/json')
+        ? parseJsonBody(event)
+        : parseJsonBody(event);
+
+      if (!body || !body.op) {
+        return json(400, { error: 'invalid request body' });
+      }
+
       const token = String(body.token || '');
       const payload = verifyFeedbackToken(token, appEnv.security.sessionSecret);
       if (!payload) return json(400, { error: 'invalid token' });
