@@ -33,6 +33,29 @@ function unique(values) {
   return [...new Set(values.map((x) => String(x || '').trim()).filter(Boolean))];
 }
 
+function tokenize(value) {
+  return String(value || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .filter((x) => x.length >= 3);
+}
+
+function overlapScore(aText, bText) {
+  const a = new Set(tokenize(aText));
+  const b = new Set(tokenize(bText));
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const t of a) if (b.has(t)) shared += 1;
+  return shared / Math.max(1, Math.min(a.size, b.size));
+}
+
+function extractEmailAddress(value) {
+  const m = String(value || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return m ? m[0].toLowerCase() : '';
+}
+
 function compactEvent(event) {
   return {
     id: String(event.id || ''),
@@ -80,7 +103,7 @@ function fallbackResponse(event, emails) {
       title: e.subject || '(No subject)',
       source_type: 'email',
       source_id: e.id,
-      why_relevant: 'recent email from meeting participant',
+      why_relevant: e.why_relevant || 'recent email related to meeting context',
       date: e.timestamp,
       participants: [e.from, e.to].filter(Boolean),
       snippet: e.snippet || '',
@@ -119,17 +142,31 @@ export async function runMeetingPrep({ gmail, calendar, llm }) {
   const nextEvent = events[0] || null;
   if (!nextEvent) return fallbackResponse(null, []);
 
-  const people = unique([nextEvent.organizer, ...(nextEvent.attendees || [])]).slice(0, 5);
-  const personTerms = people
-    .map((p) => p.includes('@') ? `from:${p}` : `"${p}"`)
-    .join(' OR ');
-  const q = `${personTerms} newer_than:30d -in:chats`.trim();
+  const profile = await gmail.users.getProfile({ userId: 'me' });
+  const me = String(profile.data?.emailAddress || '').toLowerCase();
 
-  const list = await gmail.users.messages.list({
-    userId: 'me',
-    q,
-    maxResults: 8,
-  });
+  const people = unique([nextEvent.organizer, ...(nextEvent.attendees || [])])
+    .map((x) => extractEmailAddress(x) || String(x || '').toLowerCase())
+    .filter(Boolean)
+    .filter((x) => x !== me)
+    .slice(0, 5);
+
+  let list;
+  if (people.length) {
+    const personTerms = people.map((p) => (p.includes('@') ? `from:${p}` : `"${p}"`)).join(' OR ');
+    list = await gmail.users.messages.list({
+      userId: 'me',
+      q: `${personTerms} newer_than:30d -in:chats`.trim(),
+      maxResults: 10,
+    });
+  } else {
+    list = await gmail.users.messages.list({
+      userId: 'me',
+      q: 'newer_than:30d -in:chats',
+      maxResults: 25,
+    });
+  }
+
   const ids = (list.data.messages || []).map((m) => m.id).filter(Boolean);
   const rawEmails = await Promise.all(ids.map(async (id) => {
     const detail = await gmail.users.messages.get({
@@ -140,8 +177,25 @@ export async function runMeetingPrep({ gmail, calendar, llm }) {
     });
     return detail.data;
   }));
-  const emails = rawEmails.map(compactMessage)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const eventText = `${nextEvent.title} ${nextEvent.description_preview}`.trim();
+  const emails = rawEmails
+    .map(compactMessage)
+    .map((e) => {
+      const text = `${e.subject} ${e.snippet}`.trim();
+      const topicScore = overlapScore(eventText, text);
+      return {
+        ...e,
+        _topicScore: topicScore,
+        why_relevant: people.length
+          ? 'recent email from meeting participant'
+          : 'topic overlap with next meeting',
+      };
+    })
+    .filter((e) => (people.length ? true : e._topicScore >= 0.15))
+    .sort((a, b) => {
+      if (!people.length && b._topicScore !== a._topicScore) return b._topicScore - a._topicScore;
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
 
   const fallback = fallbackResponse(nextEvent, emails);
   if (!llm || !emails.length) return fallback;
