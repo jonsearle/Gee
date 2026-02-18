@@ -2,6 +2,8 @@ import { getAppEnv } from '../../src/netlify/env.js';
 import { createRepository } from '../../src/repository.js';
 import { verifyFeedbackToken } from '../../src/feedback-token.js';
 import { themeDefaultSummary, themeDisplayName } from '../../src/theme-domain.js';
+import { decryptToken } from '../../src/crypto.js';
+import { runForUser } from '../../src/daily-core.js';
 
 function html(statusCode, body) {
   return {
@@ -75,6 +77,62 @@ function defaultThemeSummary(themeKey) {
   return themeDefaultSummary(themeKey);
 }
 
+function isSeenWithinDays(lastSeenAt, days = 30) {
+  const ts = Date.parse(String(lastSeenAt || ''));
+  if (!Number.isFinite(ts)) return false;
+  return (Date.now() - ts) <= (days * 24 * 60 * 60 * 1000);
+}
+
+async function triggerTestEmail({ appEnv, repo, userId, forceWelcomeEmail }) {
+  const user = await repo.getUserById(userId);
+  if (!user) throw new Error('User not found');
+  if (!user.google_refresh_token_enc) {
+    throw new Error('Google refresh token missing. Reconnect your Google account first.');
+  }
+
+  const stateRow = await repo.getUserState(user.id);
+  const refreshToken = decryptToken(user.google_refresh_token_enc, appEnv.security.tokenEncryptionKey);
+
+  const nextState = await runForUser({
+    appConfig: {
+      openai: appEnv.openai,
+      resend: appEnv.resend,
+      google: {
+        ...appEnv.google,
+        refreshToken,
+      },
+      delivery: {
+        fromEmail: appEnv.delivery.fromEmail,
+        fromName: appEnv.delivery.fromName,
+      },
+      security: {
+        sessionSecret: appEnv.security.sessionSecret,
+      },
+      web: {
+        baseUrl: appEnv.web.baseUrl,
+      },
+    },
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      toEmail: user.email,
+      sendHourUtc: user.send_hour_utc,
+    },
+    refreshToken,
+    repo,
+    state: {
+      firstRunCompleted: stateRow?.first_run_completed || false,
+      lastRunAt: stateRow?.last_run_at || null,
+      lastThreadIds: Array.isArray(stateRow?.last_thread_ids) ? stateRow.last_thread_ids : [],
+    },
+    forceWelcomeEmail,
+    dryRun: false,
+  });
+
+  await repo.saveUserState(user.id, nextState);
+}
+
 function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '', error = '' }) {
   const dayButtons = daysOfWeek()
     .map((day) => `<button type="button" class="day-dot ${prefs.sendDaysUtc.includes(day.value) ? 'selected' : ''}" data-day="${day.value}">${day.label}</button>`)
@@ -85,8 +143,8 @@ function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '
     : '<li class="empty">No recent themes yet. Themes appear here as you use G.</li>';
 
   const hiddenRows = hiddenThemes.length
-    ? hiddenThemes.map((theme) => `<li class="theme-row" data-theme="${esc(theme)}" data-state="hidden">
-      <span class="theme-chip">${esc(themeDisplayName(theme))}</span>
+    ? hiddenThemes.map((themeObj) => `<li class="theme-row" data-theme="${esc(themeObj.key)}" data-state="hidden">
+      <span class="theme-chip">${esc(themeObj.name)}</span>
       <div class="theme-actions">
         <button type="button" class="action" data-pref="neutral">Show again</button>
       </div>
@@ -109,6 +167,9 @@ function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '
       p { margin:0; color:var(--muted); }
       .status { margin-top:12px; min-height:20px; font-weight:600; color:#0f5f58; }
       .status.error { color:#b42318; }
+      .test-actions { margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; }
+      .test-btn { text-decoration:none; border:1px solid #b7d9d5; background:#fff; color:#0f5f58; border-radius:9px; padding:8px 12px; font-weight:600; }
+      .test-btn.primary { background:#0f766e; border-color:#0f766e; color:#fff; }
       .days { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
       .day-dot { width:36px; height:36px; border-radius:999px; border:1px solid var(--line); background:#f8fafc; color:#334155; font-weight:700; cursor:pointer; }
       .day-dot.selected { background:var(--brand); border-color:var(--brand); color:#fff; }
@@ -141,6 +202,10 @@ function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '
         <h1>Plan preferences</h1>
         <p>Update your email days and theme controls.</p>
         <div class="status ${error ? 'error' : ''}">${esc(error || message || '')}</div>
+        <div class="test-actions">
+          <a class="test-btn primary" href="/feedback?t=${encodeURIComponent(token)}&a=test_onboarding">Run onboarding test email</a>
+          <a class="test-btn" href="/feedback?t=${encodeURIComponent(token)}&a=test_daily">Run daily test email</a>
+        </div>
       </section>
 
       <form id="prefsForm" method="post" action="/feedback">
@@ -310,12 +375,15 @@ async function renderPreferences(repo, payload, token, message = '', error = '')
     }
   }
   const activeThemes = [...byKey.values()].filter((theme) => !prefs.hiddenThemes.includes(theme.key));
+  const hiddenThemes = prefs.hiddenThemes
+    .map((key) => byKey.get(key) || { key, name: themeDisplayName(key), lastSeenAt: '' })
+    .filter((themeObj) => isSeenWithinDays(themeObj.lastSeenAt, 30));
 
   return preferencesPage({
     token,
     prefs,
     activeThemes,
-    hiddenThemes: prefs.hiddenThemes,
+    hiddenThemes,
     message,
     error,
   });
@@ -336,6 +404,28 @@ export const handler = async (event) => {
       supabaseUrl: appEnv.supabase.url,
       supabaseServiceRoleKey: appEnv.supabase.serviceRoleKey,
     });
+
+    if (event.httpMethod === 'GET') {
+      const action = String(event.queryStringParameters?.a || '').trim();
+      if (action === 'test_onboarding' || action === 'test_daily') {
+        await triggerTestEmail({
+          appEnv,
+          repo,
+          userId: payload.userId,
+          forceWelcomeEmail: action === 'test_onboarding',
+        });
+        return html(200, await renderPreferences(
+          repo,
+          payload,
+          token,
+          action === 'test_onboarding'
+            ? 'Sent onboarding test email and refreshed themes.'
+            : 'Sent daily test email and refreshed themes.',
+        ));
+      }
+
+      return html(200, await renderPreferences(repo, payload, token));
+    }
 
     if (event.httpMethod === 'POST') {
       const body = parseBody(event);
@@ -366,7 +456,7 @@ export const handler = async (event) => {
       return html(200, await renderPreferences(repo, payload, token, 'Saved: preferences updated.'));
     }
 
-    return html(200, await renderPreferences(repo, payload, token));
+    return html(405, '<p>Method not allowed.</p>');
   } catch (err) {
     return html(500, `<p>Preferences failed: ${esc(err.message || String(err))}</p>`);
   }
