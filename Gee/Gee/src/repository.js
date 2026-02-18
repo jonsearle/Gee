@@ -83,6 +83,28 @@ export function createRepository({ supabaseUrl, supabaseServiceRoleKey }) {
       return data || [];
     },
 
+    async claimScheduledSend({ userId, sendDateUtc }) {
+      const { error } = await db
+        .from('gee_scheduled_sends')
+        .insert({
+          user_id: userId,
+          send_date_utc: sendDateUtc,
+        });
+
+      if (!error) return true;
+      if (error.code === '23505') return false;
+      throw error;
+    },
+
+    async releaseScheduledSendClaim({ userId, sendDateUtc }) {
+      const { error } = await db
+        .from('gee_scheduled_sends')
+        .delete()
+        .eq('user_id', userId)
+        .eq('send_date_utc', sendDateUtc);
+      if (error) throw error;
+    },
+
     async getUserState(userId) {
       const { data, error } = await db
         .from('gee_user_state')

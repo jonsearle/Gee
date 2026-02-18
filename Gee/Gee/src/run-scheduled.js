@@ -7,6 +7,10 @@ function utcHourNow() {
   return new Date().getUTCHours();
 }
 
+function utcDateNow() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 async function main() {
   const repo = createRepository({
     supabaseUrl: config.supabase.url,
@@ -16,12 +20,24 @@ async function main() {
   const targetHour = Number.isInteger(config.scheduler.hourOverride)
     ? config.scheduler.hourOverride
     : utcHourNow();
+  const sendDateUtc = utcDateNow();
 
   const users = await repo.listUsersForHour(targetHour);
   console.log(`Gee scheduled run: ${users.length} user(s) at hour ${targetHour} UTC`);
 
   for (const row of users) {
+    const claimed = await repo.claimScheduledSend({
+      userId: row.id,
+      sendDateUtc,
+    });
+
+    if (!claimed) {
+      console.log(`Skipping ${row.email}: already sent today`);
+      continue;
+    }
+
     if (!row.google_refresh_token_enc) {
+      await repo.releaseScheduledSendClaim({ userId: row.id, sendDateUtc });
       console.log(`Skipping ${row.email}: missing refresh token`);
       continue;
     }
@@ -53,6 +69,11 @@ async function main() {
       await repo.saveUserState(row.id, nextState);
       console.log(`Completed ${row.email}`);
     } catch (err) {
+      try {
+        await repo.releaseScheduledSendClaim({ userId: row.id, sendDateUtc });
+      } catch (releaseErr) {
+        console.error(`Failed to release claim for ${row.email}:`, releaseErr.message || releaseErr);
+      }
       console.error(`Failed for ${row.email}:`, err.message || err);
     }
   }

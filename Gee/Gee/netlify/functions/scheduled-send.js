@@ -7,6 +7,10 @@ function utcHourNow() {
   return new Date().getUTCHours();
 }
 
+function utcDateNow() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export const handler = async () => {
   try {
     const appEnv = getAppEnv();
@@ -21,13 +25,25 @@ export const handler = async () => {
       : null;
 
     const targetHour = Number.isInteger(hourOverride) ? hourOverride : utcHourNow();
+    const sendDateUtc = utcDateNow();
     const users = await repo.listUsersForHour(targetHour);
 
     const results = [];
 
     for (const row of users) {
       try {
+        const claimed = await repo.claimScheduledSend({
+          userId: row.id,
+          sendDateUtc,
+        });
+
+        if (!claimed) {
+          results.push({ email: row.email, status: 'skipped', reason: 'already sent today' });
+          continue;
+        }
+
         if (!row.google_refresh_token_enc) {
+          await repo.releaseScheduledSendClaim({ userId: row.id, sendDateUtc });
           results.push({ email: row.email, status: 'skipped', reason: 'missing refresh token' });
           continue;
         }
@@ -75,6 +91,12 @@ export const handler = async () => {
         await repo.saveUserState(row.id, nextState);
         results.push({ email: row.email, status: 'sent' });
       } catch (err) {
+        try {
+          await repo.releaseScheduledSendClaim({ userId: row.id, sendDateUtc });
+        } catch (releaseErr) {
+          // Preserve the original error while still surfacing lock-release failures.
+          console.error('Failed to release scheduled-send claim:', releaseErr.message || releaseErr);
+        }
         results.push({ email: row.email, status: 'failed', error: err.message || String(err) });
       }
     }

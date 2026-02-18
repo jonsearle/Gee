@@ -69,3 +69,10 @@ create table if not exists gee_user_preferences (
   tone_prefs jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
+
+create table if not exists gee_scheduled_sends (
+  user_id uuid not null references gee_users(id) on delete cascade,
+  send_date_utc date not null,
+  created_at timestamptz not null default now(),
+  primary key (user_id, send_date_utc)
+);

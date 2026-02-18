@@ -29,6 +29,13 @@ function escapeHtml(text) {
     .replaceAll("'", '&#39;');
 }
 
+function getGreeting(date = new Date()) {
+  const hour = date.getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 function sectionTitle(text) {
   return `<h2 style="margin:20px 0 8px;font:700 14px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:.02em;text-transform:uppercase;color:#0f172a;">${escapeHtml(text)}</h2>`;
 }
@@ -61,8 +68,9 @@ export function renderDailyEmail({
   const main = getMainItems(plan);
   const canWait = getCanWaitItems(plan);
   const microNudge = plan.microNudge || 'If you only do one thing today, finish the most time-sensitive commitment first.';
+  const greeting = getGreeting();
 
-  lines.push(`Good morning, ${userName}`);
+  lines.push(`${greeting}, ${userName}`);
   lines.push('');
   lines.push(plan.contextSentence || 'Quiet day overall. A clear order will help.');
   lines.push('');
@@ -124,6 +132,7 @@ export function renderDailyEmailHtml({
   const main = getMainItems(plan);
   const canWait = getCanWaitItems(plan);
   const microNudge = plan.microNudge || 'If you only do one thing today, finish the most time-sensitive task first.';
+  const greeting = getGreeting();
 
   const mainList = renderHtmlList(
     main,
@@ -171,7 +180,7 @@ export function renderDailyEmailHtml({
           <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="max-width:640px;width:100%;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
             <tr>
               <td style="padding:22px 22px 10px;background:#f1f5f9;">
-                <p style="margin:0 0 8px;font:700 22px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#0f172a;">Good morning, ${escapeHtml(userName)}</p>
+                <p style="margin:0 0 8px;font:700 22px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#0f172a;">${escapeHtml(greeting)}, ${escapeHtml(userName)}</p>
                 <p style="margin:0;font:400 15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#334155;">
                   ${escapeHtml(plan.contextSentence || 'Quiet day overall. A clear order will help.')}
                 </p>
