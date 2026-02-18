@@ -107,8 +107,7 @@ export async function runMeetingPrep({ calendar, llm }) {
   const prompt = [
     'You are a meeting prep assistant.',
     'Use ONLY this meeting invite context. Do not invent facts.',
-    'Return JSON only with this exact schema:',
-    '{"summary":"string","confidence":"high|medium|low","objective":"string","talking_points":["string"],"smart_questions":["string"],"recommended_opener":"string","risks":["string"],"next_steps":["string"]}',
+    'Return a concise preparation brief.',
     'Keep language practical and concise.',
     '',
     `Meeting context: ${JSON.stringify(nextEvent)}`,
@@ -117,7 +116,58 @@ export async function runMeetingPrep({ calendar, llm }) {
   const out = await client.responses.create({
     model,
     input: prompt,
-    max_output_tokens: 320,
+    max_output_tokens: 420,
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'meeting_prep',
+        strict: true,
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            summary: { type: 'string' },
+            confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+            objective: { type: 'string' },
+            talking_points: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 1,
+              maxItems: 5,
+            },
+            smart_questions: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 1,
+              maxItems: 4,
+            },
+            recommended_opener: { type: 'string' },
+            risks: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 0,
+              maxItems: 4,
+            },
+            next_steps: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 0,
+              maxItems: 4,
+            },
+          },
+          required: [
+            'summary',
+            'confidence',
+            'objective',
+            'talking_points',
+            'smart_questions',
+            'recommended_opener',
+            'risks',
+            'next_steps',
+          ],
+        },
+      },
+    },
   });
 
   const parsed = parseJsonSafely(out.output_text || '');
