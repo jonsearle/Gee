@@ -54,6 +54,7 @@ Return ONLY valid JSON with this exact shape:
   ],
   "micro_nudge": "string",
   "can_wait": ["string"],
+  "candidate_themes": ["string"],
   "observed_workstreams": ["string"]
 }
 
@@ -72,6 +73,7 @@ Preference signals (if present):
 - tone preferences: ${JSON.stringify(userPreferences?.tonePrefs || {})}
 
 Apply preferences only when supported by the provided data. Do not override factual grounding.
+When deciding what matters, prioritize significance signals (deadlines, commitments, key people, explicit asks, calendar anchors) over raw message frequency.
 
 For "help_links":
 - Optional, 0-3 per main item.
@@ -85,8 +87,14 @@ For "help_links":
 
 For "theme":
 - Keep it 1-4 words.
-- Use stable labels (e.g. "career interview", "investments", "project planning").
+- Use broad, reusable labels (e.g. "career growth", "investments", "project planning").
+- Avoid splitting very similar items into separate themes.
 - Avoid dates, names, or sentence-like themes.
+
+For "candidate_themes":
+- Return 5-12 themes that are relevant from provided context, including plausible but not selected topics.
+- Exclude hidden themes if provided in preferences.
+- Use the same style as "theme" and avoid near-duplicate variants.
 
 Data follows:
 EMAILS=${JSON.stringify(emails)}
@@ -194,27 +202,35 @@ export async function synthesizeDailyPlan(client, model, payload) {
 
   const text = res.output_text || '';
   const json = parseJsonSafely(text);
+  const mainThings = Array.isArray(json.main_things)
+    ? json.main_things
+        .map((i) => ({
+          theme: String(i?.theme || '').trim(),
+          title: String(i?.title || '').trim(),
+          detail: String(i?.detail || '').trim(),
+          efficiencyHint: String(i?.efficiency_hint || '').trim(),
+          helpLinks: Array.isArray(i?.help_links)
+            ? i.help_links.map((link) => toHelpLink(link, allow)).filter(Boolean).slice(0, 3)
+            : [],
+        }))
+        .filter((i) => i.title)
+        .slice(0, 5)
+    : [];
+  const candidateThemes = Array.isArray(json.candidate_themes)
+    ? json.candidate_themes.map((x) => String(x).trim()).filter(Boolean)
+    : [];
+  for (const item of mainThings) {
+    if (item.theme) candidateThemes.push(item.theme);
+  }
 
   return {
     contextSentence: String(json.context_sentence || '').trim(),
-    mainThings: Array.isArray(json.main_things)
-      ? json.main_things
-          .map((i) => ({
-            theme: String(i?.theme || '').trim(),
-            title: String(i?.title || '').trim(),
-            detail: String(i?.detail || '').trim(),
-            efficiencyHint: String(i?.efficiency_hint || '').trim(),
-            helpLinks: Array.isArray(i?.help_links)
-              ? i.help_links.map((link) => toHelpLink(link, allow)).filter(Boolean).slice(0, 3)
-              : [],
-          }))
-          .filter((i) => i.title)
-          .slice(0, 5)
-      : [],
+    mainThings,
     microNudge: String(json.micro_nudge || '').trim(),
     canWait: Array.isArray(json.can_wait)
       ? json.can_wait.map((x) => String(x).trim()).filter(Boolean).slice(0, 3)
       : [],
+    candidateThemes: [...new Set(candidateThemes)].slice(0, 16),
     observedWorkstreams: Array.isArray(json.observed_workstreams)
       ? json.observed_workstreams.map((x) => String(x).trim()).filter(Boolean).slice(0, 5)
       : [],

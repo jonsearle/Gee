@@ -14,11 +14,26 @@ function uniqueStrings(items = []) {
 }
 
 function normalizeTheme(theme) {
-  return String(theme || '')
+  const normalized = String(theme || '')
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .slice(0, 80);
+  if (!normalized) return '';
+
+  const canonicalMap = new Map([
+    ['career interview', 'career growth'],
+    ['interview prep', 'career growth'],
+    ['career planning', 'career growth'],
+    ['job interview', 'career growth'],
+    ['interview', 'career growth'],
+  ]);
+
+  if (canonicalMap.has(normalized)) return canonicalMap.get(normalized);
+
+  if (normalized.includes('interview') || normalized.includes('career')) return 'career growth';
+
+  return normalized;
 }
 
 function defaultSendDaysUtc() {
@@ -329,8 +344,15 @@ export function createRepository({ supabaseUrl, supabaseServiceRoleKey }) {
         const mainThings = Array.isArray(row?.plan_json?.mainThings)
           ? row.plan_json.mainThings
           : [];
+        const candidateThemes = Array.isArray(row?.plan_json?.candidateThemes)
+          ? row.plan_json.candidateThemes
+          : [];
         for (const item of mainThings) {
           const normalized = normalizeTheme(item?.theme);
+          if (normalized) themes.push(normalized);
+        }
+        for (const theme of candidateThemes) {
+          const normalized = normalizeTheme(theme);
           if (normalized) themes.push(normalized);
         }
       }
