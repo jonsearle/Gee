@@ -61,9 +61,10 @@ function normalizeFocusThemeName(name, summary = '') {
   if (!base) return '';
   const text = `${base} ${normalizeTheme(summary)}`.toLowerCase();
 
-  if (/(career|interview|job|application|network|skill|development|preparation)/.test(text)) return 'career growth';
+  if (/(career|interview|job|application|applications|network|networking|skill|development|preparation|personal development)/.test(text)) return 'career growth';
   if (/(project|product|team|meeting|follow|feedback|update|execution|planning|time management)/.test(text)) return 'work execution';
   if (/(personal project|side project)/.test(text)) return 'personal projects';
+  if (/(learning|study|course|training)/.test(text)) return 'learning';
   if (/(invest|investment|finance|fund|portfolio)/.test(text)) return 'finance';
 
   return base;
@@ -298,9 +299,9 @@ export function createRepository({ supabaseUrl, supabaseServiceRoleKey }) {
       const planning = current?.planning_constraints || {};
       return {
         sendDaysUtc: normalizeSendDaysUtc(planning.sendDaysUtc),
-        moreThemes: uniqueStrings(current?.preferred_sections).map((x) => normalizeTheme(x)).filter(Boolean),
-        lessThemes: uniqueStrings(planning.lessThemes).map((x) => normalizeTheme(x)).filter(Boolean),
-        hiddenThemes: uniqueStrings(current?.suppressed_sections).map((x) => normalizeTheme(x)).filter(Boolean),
+        moreThemes: uniqueStrings(current?.preferred_sections).map((x) => normalizeFocusThemeName(x)).filter(Boolean),
+        lessThemes: uniqueStrings(planning.lessThemes).map((x) => normalizeFocusThemeName(x)).filter(Boolean),
+        hiddenThemes: uniqueStrings(current?.suppressed_sections).map((x) => normalizeFocusThemeName(x)).filter(Boolean),
       };
     },
 
@@ -310,16 +311,16 @@ export function createRepository({ supabaseUrl, supabaseServiceRoleKey }) {
         ...(current?.planning_constraints || {}),
       };
       if (sendDaysUtc) planningConstraints.sendDaysUtc = normalizeSendDaysUtc(sendDaysUtc);
-      if (lessThemes) planningConstraints.lessThemes = uniqueStrings(lessThemes).map((x) => normalizeTheme(x)).filter(Boolean);
+      if (lessThemes) planningConstraints.lessThemes = uniqueStrings(lessThemes).map((x) => normalizeFocusThemeName(x)).filter(Boolean);
 
       const next = {
         user_id: userId,
         planning_constraints: planningConstraints,
         preferred_sections: moreThemes
-          ? uniqueStrings(moreThemes).map((x) => normalizeTheme(x)).filter(Boolean)
+          ? uniqueStrings(moreThemes).map((x) => normalizeFocusThemeName(x)).filter(Boolean)
           : (current?.preferred_sections || []),
         suppressed_sections: hiddenThemes
-          ? uniqueStrings(hiddenThemes).map((x) => normalizeTheme(x)).filter(Boolean)
+          ? uniqueStrings(hiddenThemes).map((x) => normalizeFocusThemeName(x)).filter(Boolean)
           : (current?.suppressed_sections || []),
         tone_prefs: current?.tone_prefs || {},
         updated_at: new Date().toISOString(),
@@ -335,7 +336,7 @@ export function createRepository({ supabaseUrl, supabaseServiceRoleKey }) {
     },
 
     async setThemePreference(userId, rawTheme, preference) {
-      const theme = normalizeTheme(rawTheme);
+      const theme = normalizeFocusThemeName(rawTheme);
       if (!theme) throw new Error('Theme is required');
 
       const current = await this.getUserMasterPreferences(userId);

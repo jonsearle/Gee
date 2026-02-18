@@ -70,6 +70,17 @@ function renderThemeRow(themeObj, state) {
   </li>`;
 }
 
+function defaultThemeSummary(themeKey) {
+  const map = {
+    'career growth': 'Interviews, applications, and career progression actions.',
+    'work execution': 'Projects, meetings, follow-ups, and delivery work.',
+    learning: 'Study, training, and skill-building tasks.',
+    'personal projects': 'Personal initiatives and side projects.',
+    finance: 'Money, investment, and financial admin topics.',
+  };
+  return map[themeKey] || '';
+}
+
 function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '', error = '' }) {
   const dayButtons = daysOfWeek()
     .map((day) => `<button type="button" class="day-dot ${prefs.sendDaysUtc.includes(day.value) ? 'selected' : ''}" data-day="${day.value}">${day.label}</button>`)
@@ -298,7 +309,7 @@ async function renderPreferences(repo, payload, token, message = '', error = '')
       byKey.set(key, {
         key,
         name: key,
-        summary: '',
+        summary: defaultThemeSummary(key),
         examples: [],
         count: 0,
       });
