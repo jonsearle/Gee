@@ -2,28 +2,81 @@ const signedOut = document.getElementById('signedOut');
 const signedIn = document.getElementById('signedIn');
 const whoami = document.getElementById('whoami');
 const sendNowBtn = document.getElementById('sendNowBtn');
-const openInboxChatBtn = document.getElementById('openInboxChatBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const statusText = document.getElementById('statusText');
-const inboxChatOverlay = document.getElementById('inboxChatOverlay');
-const closeInboxChatBtn = document.getElementById('closeInboxChatBtn');
-const inboxChatSelect = document.getElementById('inboxChatSelect');
-const inboxMessages = document.getElementById('inboxMessages');
-const inboxInput = document.getElementById('inboxInput');
-const newChatBtn = document.getElementById('newChatBtn');
-const sendChatBtn = document.getElementById('sendChatBtn');
-const sendToGBtn = document.getElementById('sendToGBtn');
-const workstreamList = document.getElementById('workstreamList');
-const planSelect = document.getElementById('planSelect');
-const planActionList = document.getElementById('planActionList');
-const planChatInput = document.getElementById('planChatInput');
-const sendPlanChatBtn = document.getElementById('sendPlanChatBtn');
+const memoryChatLog = document.getElementById('memoryChatLog');
+const memoryChatForm = document.getElementById('memoryChatForm');
+const memoryChatInput = document.getElementById('memoryChatInput');
+const memoryChatSendBtn = document.getElementById('memoryChatSendBtn');
 
-let workspaceState = null;
+const sessionId = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `session_${Date.now()}`;
+let lastInteractionId = '';
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
 
 function setStatus(text, isError = false) {
   statusText.textContent = text;
   statusText.style.color = isError ? '#b3261e' : '#5f7466';
+}
+
+function appendUserMessage(text) {
+  const row = document.createElement('div');
+  row.className = 'chat-row user';
+  row.innerHTML = `<div class="bubble user">${escapeHtml(text)}</div>`;
+  memoryChatLog.appendChild(row);
+  memoryChatLog.scrollTop = memoryChatLog.scrollHeight;
+}
+
+function appendAssistantThinking() {
+  const row = document.createElement('div');
+  row.className = 'chat-row assistant pending';
+  row.innerHTML = '<div class="bubble assistant">Thinking…</div>';
+  memoryChatLog.appendChild(row);
+  memoryChatLog.scrollTop = memoryChatLog.scrollHeight;
+  return row;
+}
+
+function buildSourcesHtml(items = [], interactionId = '') {
+  if (!items.length) return '';
+  const cards = items.map((item) => {
+    const dateText = item.date ? new Date(item.date).toLocaleString() : '';
+    const participants = Array.isArray(item.participants) ? item.participants.filter(Boolean).slice(0, 4) : [];
+    return `
+      <article class="source-card">
+        <div class="source-meta">${escapeHtml(item.source_type)} · score ${Number(item.score || 0).toFixed(2)}</div>
+        <h4>${escapeHtml(item.title || '(No title)')}</h4>
+        <p>${escapeHtml(item.why_relevant || '')}</p>
+        ${item.snippet ? `<blockquote>${escapeHtml(item.snippet)}</blockquote>` : ''}
+        <div class="source-foot">
+          <span>${escapeHtml(dateText)}</span>
+          ${participants.length ? `<span>${escapeHtml(participants.join(', '))}</span>` : ''}
+          ${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer" data-source-id="${escapeHtml(item.source_id || '')}" data-interaction-id="${escapeHtml(interactionId)}">Open source</a>` : ''}
+        </div>
+      </article>
+    `;
+  }).join('');
+  return `<div class="source-list">${cards}</div>`;
+}
+
+function renderAssistantMessage(row, payload, interactionId = '') {
+  row.classList.remove('pending');
+  const summary = payload.summary || payload.fallback_message || 'No grounded context found.';
+  const confidence = payload.confidence || 'low';
+  row.innerHTML = `
+    <div class="bubble assistant">
+      <p>${escapeHtml(summary)}</p>
+      <div class="confidence-tag">Confidence: ${escapeHtml(confidence)}</div>
+      ${buildSourcesHtml(payload.items || [], interactionId)}
+    </div>
+  `;
+  memoryChatLog.scrollTop = memoryChatLog.scrollHeight;
 }
 
 async function loadSession() {
@@ -44,7 +97,10 @@ async function loadSession() {
     setStatus('Connected, but refresh token missing. Re-connect Google.', true);
   }
 
-  await loadWorkspace();
+  const intro = document.createElement('div');
+  intro.className = 'chat-row assistant';
+  intro.innerHTML = '<div class="bubble assistant">Ask a question and I will retrieve relevant email/calendar context before responding.</div>';
+  memoryChatLog.appendChild(intro);
 }
 
 async function sendNow() {
@@ -57,7 +113,6 @@ async function sendNow() {
     const isJson = contentType.includes('application/json');
     const data = isJson ? await res.json() : { error: await res.text() };
     if (!res.ok) throw new Error(data.error || 'Failed to send summary');
-
     setStatus('Summary sent. Check your email.');
   } catch (err) {
     const msg = String(err.message || 'Failed to send summary');
@@ -76,129 +131,92 @@ async function logout() {
   window.location.reload();
 }
 
-function selectedChatId() {
-  return inboxChatSelect.value || '';
+async function sendMemoryQuery() {
+  const text = String(memoryChatInput.value || '').trim();
+  if (!text) return;
+
+  appendUserMessage(text);
+  memoryChatInput.value = '';
+  memoryChatSendBtn.disabled = true;
+  const pending = appendAssistantThinking();
+  setStatus('Retrieving context...');
+
+  try {
+    if (lastInteractionId) {
+      await fetch('/memory/event', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          event_type: 'followup_prompt',
+          interaction_id: lastInteractionId,
+          timestamp: new Date().toISOString(),
+          text_summary: text.slice(0, 200),
+        }),
+      });
+    }
+
+    const res = await fetch('/memory/query', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        user_input: text,
+        session_id: sessionId,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Memory query failed');
+
+    const interactionId = res.headers.get('x-memory-interaction-id') || '';
+    if (interactionId) lastInteractionId = interactionId;
+
+    renderAssistantMessage(pending, data, interactionId);
+    setStatus('');
+  } catch (err) {
+    pending.classList.remove('pending');
+    pending.innerHTML = `<div class="bubble assistant error">${escapeHtml(err.message || 'Failed to query memory')}</div>`;
+    setStatus(err.message || 'Failed to query memory', true);
+  } finally {
+    memoryChatSendBtn.disabled = false;
+    memoryChatInput.focus();
+  }
 }
 
-function selectedPlanId() {
-  return planSelect.value || '';
-}
+memoryChatForm?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  sendMemoryQuery().catch((err) => setStatus(err.message || 'Failed', true));
+});
 
-function renderWorkspace() {
-  const ws = workspaceState;
-  if (!ws) return;
+memoryChatInput?.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    sendMemoryQuery().catch((err) => setStatus(err.message || 'Failed', true));
+  }
+});
 
-  const chats = Array.isArray(ws.inboxChats) ? ws.inboxChats : [];
-  inboxChatSelect.innerHTML = chats.length
-    ? chats.map((c) => `<option value="${c.id}">${c.title || 'Chat'}</option>`).join('')
-    : '<option value="">No chats yet</option>';
+memoryChatLog?.addEventListener('click', async (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (target.tagName !== 'A') return;
+  const sourceId = target.getAttribute('data-source-id') || '';
+  const interactionId = target.getAttribute('data-interaction-id') || '';
+  if (!sourceId || !interactionId) return;
 
-  const activeChat = chats.find((c) => c.id === selectedChatId()) || chats[0] || null;
-  if (activeChat) inboxChatSelect.value = activeChat.id;
-  const chatMessages = activeChat?.messages || [];
-  inboxMessages.innerHTML = chatMessages.length
-    ? chatMessages.map((m) => `<div class="msg ${m.role === 'user' ? 'user' : ''}">${m.content}</div>`).join('')
-    : '<div class="msg">No messages yet.</div>';
-
-  const streams = Array.isArray(ws.workstreams) ? ws.workstreams : [];
-  workstreamList.innerHTML = streams.length
-    ? streams.map((w) => `<li><strong>${w.name}</strong><br>${w.summary || ''}</li>`).join('')
-    : '<li>No workstreams yet.</li>';
-
-  const plans = Array.isArray(ws.dailyPlans) ? ws.dailyPlans : [];
-  planSelect.innerHTML = plans.length
-    ? plans.map((p) => `<option value="${p.id}">${p.date} · ${p.focusSummary}</option>`).join('')
-    : '<option value="">No daily plans yet</option>';
-
-  const activePlan = plans.find((p) => p.id === selectedPlanId()) || plans[0] || null;
-  if (activePlan) planSelect.value = activePlan.id;
-
-  const actions = Array.isArray(ws.actions) ? ws.actions : [];
-  const actionById = new Map(actions.map((a) => [a.id, a]));
-  const planLines = activePlan?.actionIds?.length
-    ? activePlan.actionIds
-        .map((id) => actionById.get(id))
-        .filter(Boolean)
-        .map((a) => `<div class="msg user"><strong>${a.title}</strong><br>${a.whyNow || ''}</div>`)
-        .join('')
-    : '<div class="msg">No actions on this plan yet.</div>';
-
-  const planChats = Array.isArray(ws.planChats) ? ws.planChats : [];
-  const chat = activePlan ? planChats.find((c) => c.planId === activePlan.id) : null;
-  const chatLines = chat?.messages?.length
-    ? chat.messages.map((m) => `<div class="msg">${m.content}</div>`).join('')
-    : '';
-  planActionList.innerHTML = `${planLines}${chatLines}`;
-}
-
-async function callWorkspace(action, payload = {}) {
-  const res = await fetch('/api/workspace', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action, ...payload }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Workspace action failed');
-  workspaceState = data.workspace;
-  renderWorkspace();
-}
-
-async function loadWorkspace() {
-  const res = await fetch('/api/workspace');
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to load workspace');
-  workspaceState = data.workspace;
-  renderWorkspace();
-}
-
-async function createChat() {
-  const content = String(inboxInput.value || '').trim();
-  if (!content) return setStatus('Write something to start a chat.', true);
-  setStatus('Creating inbox chat...');
-  await callWorkspace('create_inbox_chat', { content });
-  inboxInput.value = '';
-  setStatus('Inbox chat created.');
-}
-
-async function sendChatMessage() {
-  const content = String(inboxInput.value || '').trim();
-  const chatId = selectedChatId();
-  if (!content) return setStatus('Write a message first.', true);
-  if (!chatId) return setStatus('Select or create a chat first.', true);
-  setStatus('Sending message...');
-  await callWorkspace('append_inbox_message', { chatId, content });
-  inboxInput.value = '';
-  setStatus('Message added.');
-}
-
-async function sendToG() {
-  const chatId = selectedChatId();
-  if (!chatId) return setStatus('Select a chat to commit.', true);
-  setStatus('Sending to G and updating workstreams...');
-  await callWorkspace('send_to_g', { chatId });
-  inboxChatOverlay?.classList.add('hidden');
-  setStatus('Committed to G.');
-}
-
-async function sendPlanChat() {
-  const planId = selectedPlanId();
-  const content = String(planChatInput.value || '').trim();
-  if (!planId) return setStatus('Select a daily plan first.', true);
-  if (!content) return setStatus('Write a plan chat message first.', true);
-  setStatus('Updating plan chat...');
-  await callWorkspace('append_plan_chat_message', { planId, content });
-  planChatInput.value = '';
-  setStatus('Plan chat updated.');
-}
+  try {
+    await fetch('/memory/event', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        event_type: 'item_opened',
+        interaction_id: interactionId,
+        source_id: sourceId,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  } catch {
+    // ignore telemetry failures in UI
+  }
+});
 
 sendNowBtn?.addEventListener('click', sendNow);
-openInboxChatBtn?.addEventListener('click', () => inboxChatOverlay?.classList.remove('hidden'));
-closeInboxChatBtn?.addEventListener('click', () => inboxChatOverlay?.classList.add('hidden'));
 logoutBtn?.addEventListener('click', logout);
-newChatBtn?.addEventListener('click', () => createChat().catch((err) => setStatus(err.message || 'Failed', true)));
-sendChatBtn?.addEventListener('click', () => sendChatMessage().catch((err) => setStatus(err.message || 'Failed', true)));
-sendToGBtn?.addEventListener('click', () => sendToG().catch((err) => setStatus(err.message || 'Failed', true)));
-sendPlanChatBtn?.addEventListener('click', () => sendPlanChat().catch((err) => setStatus(err.message || 'Failed', true)));
-inboxChatSelect?.addEventListener('change', renderWorkspace);
-planSelect?.addEventListener('change', renderWorkspace);
 loadSession().catch((err) => setStatus(err.message || 'Failed to load session', true));

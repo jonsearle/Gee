@@ -43,6 +43,21 @@
   status = 200
 
 [[redirects]]
+  from = "/memory/query"
+  to = "/.netlify/functions/memory-query"
+  status = 200
+
+[[redirects]]
+  from = "/memory/event"
+  to = "/.netlify/functions/memory-event"
+  status = 200
+
+[[redirects]]
+  from = "/memory/health"
+  to = "/.netlify/functions/memory-health"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

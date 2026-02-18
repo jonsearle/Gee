@@ -18,54 +18,26 @@
 
       <section id="signedIn" class="panel hidden">
         <img src="/gee-logo.png" alt="G logo" class="hero-logo" />
-        <p class="subtitle">You're are all set up. We're ready to send you a plan everyday.</p>
+        <p class="subtitle">Ask naturally. G replies with grounded context from Email and Calendar.</p>
         <p id="whoami" class="whoami"></p>
 
         <div class="actions center">
-          <button id="sendNowBtn" class="btn primary">Send me my summary now</button>
-          <button id="openInboxChatBtn" class="btn">Open inbox chat</button>
+          <button id="sendNowBtn" class="btn">Send me my summary now</button>
           <button id="logoutBtn" class="btn">Log out</button>
         </div>
 
         <p id="statusText" class="status"></p>
 
-        <section class="workspace">
-          <div class="workspace-col">
-            <h3>Workstreams</h3>
-            <p class="muted">Active progress threads you are moving forward.</p>
-            <ul id="workstreamList" class="simple-list"></ul>
-          </div>
-
-          <div class="workspace-col">
-            <h3>Daily Plans</h3>
-            <select id="planSelect"></select>
-            <div id="planActionList" class="log"></div>
-            <textarea id="planChatInput" rows="3" placeholder="One comment at a time to adjust this plan..."></textarea>
-            <div class="actions">
-              <button id="sendPlanChatBtn" class="btn">Apply comment to plan</button>
-            </div>
-          </div>
+        <section class="chat-shell">
+          <div id="memoryChatLog" class="chat-log"></div>
+          <form id="memoryChatForm" class="chat-compose">
+            <textarea id="memoryChatInput" rows="3" placeholder="Ask about past decisions, replies, meetings, or context..."></textarea>
+            <button id="memoryChatSendBtn" type="submit" class="btn primary">Send</button>
+          </form>
+          <p class="muted chat-footnote">Responses are grounded in retrieved email/calendar items only.</p>
         </section>
       </section>
     </main>
-
-    <section id="inboxChatOverlay" class="overlay hidden">
-      <div class="overlay-card">
-        <div class="overlay-head">
-          <h3>Inbox Chat</h3>
-          <button id="closeInboxChatBtn" class="btn">Close</button>
-        </div>
-        <p class="muted">Chat freely. Nothing affects plans until you click <strong>Send to G</strong>.</p>
-        <select id="inboxChatSelect"></select>
-        <div id="inboxMessages" class="log"></div>
-        <textarea id="inboxInput" rows="6" placeholder="Type what you want to work through..."></textarea>
-        <div class="actions">
-          <button id="newChatBtn" class="btn">New chat</button>
-          <button id="sendChatBtn" class="btn">Send message</button>
-          <button id="sendToGBtn" class="btn primary">Send to G</button>
-        </div>
-      </div>
-    </section>
 
     <script type="module" src="/app.js"></script>
   </body>

@@ -8,6 +8,9 @@ import { createRepository } from './repository.js';
 import { decryptToken, encryptToken } from './crypto.js';
 import { runForUser } from './daily-core.js';
 import { config } from './config.js';
+import { createGoogleClients } from './google.js';
+import { healthSnapshot, logEvent, runMemoryQuery } from './memory-agent-v1/index.js';
+import { createLlmClient } from './llm.js';
 
 dotenv.config();
 
@@ -37,6 +40,7 @@ const repo = createRepository({
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
 });
+const llm = createLlmClient(config.openai.apiKey);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -216,6 +220,82 @@ app.post('/api/send-now', requireAuth, async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Failed to send summary' });
   }
+});
+
+app.post('/memory/query', requireAuth, async (req, res) => {
+  try {
+    const userInput = String(req.body?.user_input || '').trim();
+    const sessionId = String(req.body?.session_id || '').trim();
+    if (!userInput) return res.status(400).json({ error: 'user_input is required' });
+
+    const user = await repo.getUserById(req.session.userId);
+    if (!user) return res.status(404).json({ error: 'user not found' });
+    if (!user.google_refresh_token_enc) {
+      return res.status(400).json({ error: 'Google refresh token missing. Please reconnect your Google account.' });
+    }
+
+    const refreshToken = decryptToken(user.google_refresh_token_enc, config.security.tokenEncryptionKey);
+    const clients = createGoogleClients(config.google, refreshToken);
+
+    const result = await runMemoryQuery({
+      userId: user.id,
+      userInput,
+      sessionId,
+      gmail: clients.gmail,
+      calendar: clients.calendar,
+      llm: {
+        client: llm,
+        model: config.openai.model,
+      },
+    });
+
+    res.setHeader('x-memory-interaction-id', result.interactionId);
+    return res.json(result.response);
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'memory query failed' });
+  }
+});
+
+app.post('/memory/event', requireAuth, async (req, res) => {
+  try {
+    const eventType = String(req.body?.event_type || '').trim();
+    if (!eventType) return res.status(400).json({ error: 'event_type is required' });
+
+    if (eventType === 'item_opened') {
+      logEvent('item_opened', {
+        interaction_id: String(req.body?.interaction_id || ''),
+        source_id: String(req.body?.source_id || ''),
+        timestamp: req.body?.timestamp || new Date().toISOString(),
+      });
+      return res.json({ ok: true });
+    }
+
+    if (eventType === 'followup_prompt') {
+      logEvent('followup_prompt', {
+        interaction_id: String(req.body?.interaction_id || ''),
+        timestamp: req.body?.timestamp || new Date().toISOString(),
+        text_summary: String(req.body?.text_summary || '').slice(0, 240),
+      });
+      return res.json({ ok: true });
+    }
+
+    if (eventType === 'no_interaction_timeout') {
+      logEvent('no_interaction_timeout', {
+        interaction_id: String(req.body?.interaction_id || ''),
+        timeout_s: Number(req.body?.timeout_s || 0),
+        timestamp: req.body?.timestamp || new Date().toISOString(),
+      });
+      return res.json({ ok: true });
+    }
+
+    return res.status(400).json({ error: 'unsupported event_type' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'memory event failed' });
+  }
+});
+
+app.get('/memory/health', (_req, res) => {
+  res.json(healthSnapshot());
 });
 
 app.get('*', (_req, res) => {
