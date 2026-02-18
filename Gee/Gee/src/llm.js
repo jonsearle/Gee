@@ -28,6 +28,7 @@ Hard constraints:
 - Do not pretend to be human.
 - Keep sentences short and direct.
 - Max 5 main items.
+- Avoid generic filler advice. If you cannot ground an item, omit it.
 
 Style examples:
 - Good: "Quiet day today. Good chance to finish X before lunch."
@@ -112,6 +113,15 @@ For "candidate_themes":
 - Exclude hidden themes if provided in preferences.
 - Use the same style as "theme" and avoid near-duplicate variants.
 
+Quality bar:
+- Every main_things item must include at least one concrete anchor in title or detail:
+  - person/team/company name, specific meeting/event, project name, email thread context, or explicit time/date.
+- Do NOT output vague task titles such as:
+  - "work on urgent tasks", "focus on high-impact tasks", "handle pending work", "prioritize important items".
+- For can_wait, avoid generic placeholders like:
+  - "non-urgent emails", "routine admin tasks", "long-term projects".
+- If data is insufficient, return fewer, higher-quality items rather than generic filler.
+
 Data follows:
 EMAILS=${JSON.stringify(emails)}
 CALENDAR=${JSON.stringify(calendar)}
@@ -192,6 +202,45 @@ function toHelpLink(link, allow) {
   return null;
 }
 
+const GENERIC_ACTION_PATTERNS = [
+  /\bhigh[-\s]?impact tasks?\b/i,
+  /\burgent tasks?\b/i,
+  /\bpending work\b/i,
+  /\bimportant tasks?\b/i,
+  /\bcritical tasks?\b/i,
+  /\bmaintain momentum\b/i,
+  /\bwork on\b.*\btasks?\b/i,
+];
+
+const GENERIC_CAN_WAIT_PATTERNS = [
+  /\bnon[-\s]?urgent emails?\b/i,
+  /\broutine admin(istrative)? tasks?\b/i,
+  /\blong[-\s]?term projects?\b/i,
+];
+
+function hasConcreteAnchor(text) {
+  const value = String(text || '');
+  if (!value) return false;
+
+  // Signals: explicit time/date, proper names, or concrete nouns from context.
+  const hasTime = /\b\d{1,2}(:\d{2})?\s?(am|pm)\b/i.test(value) || /\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(value);
+  const hasCapitalizedEntity = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/.test(value);
+  const hasSpecificNoun = /\b(interview|meeting|proposal|contract|application|project|thread|event|brief|report|deck)\b/i.test(value);
+
+  return hasTime || hasCapitalizedEntity || hasSpecificNoun;
+}
+
+function isGenericActionItem(item) {
+  const text = `${String(item?.title || '')} ${String(item?.detail || '')}`;
+  return GENERIC_ACTION_PATTERNS.some((re) => re.test(text));
+}
+
+function isGenericCanWaitItem(text) {
+  const value = String(text || '').trim();
+  if (!value) return true;
+  return GENERIC_CAN_WAIT_PATTERNS.some((re) => re.test(value));
+}
+
 export async function synthesizeDailyPlan(client, model, payload) {
   const prompt = buildPrompt(payload);
   const calendarEvents = [
@@ -265,6 +314,8 @@ export async function synthesizeDailyPlan(client, model, payload) {
           };
         })
         .filter((i) => i.title)
+        .filter((i) => !isGenericActionItem(i))
+        .filter((i) => hasConcreteAnchor(`${i.title} ${i.detail}`) || i.helpLinks.length > 0)
         .slice(0, 5)
     : [];
   const mainThings = parsedMainThings.filter((item) => !hiddenThemeKeys.has(item.themeKey));
@@ -289,7 +340,10 @@ export async function synthesizeDailyPlan(client, model, payload) {
     mainThings,
     microNudge: String(json.micro_nudge || '').trim(),
     canWait: Array.isArray(json.can_wait)
-      ? json.can_wait.map((x) => String(x).trim()).filter(Boolean).slice(0, 3)
+      ? json.can_wait
+          .map((x) => String(x).trim())
+          .filter((x) => !isGenericCanWaitItem(x))
+          .slice(0, 3)
       : [],
     candidateThemes: [...new Set(candidateThemeKeys)]
       .filter((key) => !hiddenThemeKeys.has(key))
