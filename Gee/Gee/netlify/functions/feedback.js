@@ -38,16 +38,24 @@ function daysOfWeek() {
   ];
 }
 
-function themeState(theme, prefs) {
-  if (prefs.hiddenThemes.includes(theme)) return 'hidden';
-  if (prefs.moreThemes.includes(theme)) return 'more';
-  if (prefs.lessThemes.includes(theme)) return 'less';
+function themeState(themeKey, prefs) {
+  if (prefs.hiddenThemes.includes(themeKey)) return 'hidden';
+  if (prefs.moreThemes.includes(themeKey)) return 'more';
+  if (prefs.lessThemes.includes(themeKey)) return 'less';
   return 'neutral';
 }
 
-function renderThemeRow(theme, state) {
-  return `<li class="theme-row" data-theme="${esc(theme)}" data-state="${esc(state)}">
-    <span class="theme-chip">${esc(theme)}</span>
+function renderThemeRow(themeObj, state) {
+  const key = String(themeObj?.key || '').trim();
+  const name = String(themeObj?.name || key).trim();
+  const summary = String(themeObj?.summary || '').trim();
+  const example = Array.isArray(themeObj?.examples) && themeObj.examples.length
+    ? ` e.g. ${themeObj.examples[0]}`
+    : '';
+
+  return `<li class="theme-row" data-theme="${esc(key)}" data-state="${esc(state)}">
+    <span class="theme-chip">${esc(name)}</span>
+    ${summary || example ? `<div class="theme-meta">${esc(summary || example)}</div>` : ''}
     <div class="theme-actions">
       <button type="button" class="action ${state === 'more' ? 'selected' : ''}" data-pref="more">More</button>
       <button type="button" class="action ${state === 'less' ? 'selected' : ''}" data-pref="less">Less</button>
@@ -68,7 +76,7 @@ function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '
     .join('');
 
   const activeRows = activeThemes.length
-    ? activeThemes.map((theme) => renderThemeRow(theme, themeState(theme, prefs))).join('')
+    ? activeThemes.map((theme) => renderThemeRow(theme, themeState(theme.key, prefs))).join('')
     : '<li class="empty">No recent themes yet. Themes appear here as you use G.</li>';
 
   const hiddenRows = hiddenThemes.length
@@ -103,6 +111,7 @@ function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '
       .theme-row { display:flex; align-items:center; gap:10px; border-top:1px solid var(--line); padding:11px 0; flex-wrap:wrap; }
       .theme-row:first-child { border-top:0; padding-top:0; }
       .theme-chip { background:#eef3ff; color:#1f2a55; border-radius:999px; padding:5px 10px; font-weight:600; }
+      .theme-meta { color:#64748b; font-size:12px; max-width:360px; }
       .theme-actions { margin-left:auto; display:inline-flex; align-items:center; gap:8px; }
       .action { color:#0f5f58; border:1px solid #b7d9d5; background:#fff; border-radius:8px; padding:5px 10px; font-weight:600; cursor:pointer; }
       .action.selected { background:var(--brand); border-color:var(--brand); color:#fff; }
@@ -189,8 +198,8 @@ function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '
           showAgain.className = 'theme-row';
           showAgain.setAttribute('data-theme', row.getAttribute('data-theme'));
           showAgain.setAttribute('data-state', 'hidden');
-          showAgain.innerHTML = '<span class="theme-chip">'
-            + row.querySelector('.theme-chip').textContent
+          const label = row.querySelector('.theme-chip').textContent;
+          showAgain.innerHTML = '<span class="theme-chip">' + label
             + '</span><div class="theme-actions"><button type="button" class="action" data-pref="neutral">Show again</button></div>';
           hiddenList.prepend(showAgain);
         }
@@ -202,8 +211,8 @@ function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '
           li.className = 'theme-row';
           li.setAttribute('data-theme', theme);
           li.setAttribute('data-state', 'neutral');
-          li.innerHTML = '<span class="theme-chip">'
-            + row.querySelector('.theme-chip').textContent
+          const label = row.querySelector('.theme-chip').textContent;
+          li.innerHTML = '<span class="theme-chip">' + label
             + '</span><div class="theme-actions"><button type="button" class="action" data-pref="more">More</button><button type="button" class="action" data-pref="less">Less</button><details class="overflow-wrap"><summary class="overflow">...</summary><div class="overflow-menu"><button type="button" class="danger-link" data-pref="hidden">Don\\'t show me again</button></div></details></div>';
           activeList.prepend(li);
         }
@@ -282,12 +291,20 @@ function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '
 
 async function renderPreferences(repo, payload, token, message = '', error = '') {
   const prefs = await repo.getUserMasterPreferences(payload.userId);
-  const recentThemes = await repo.getRecentThemesForUser(payload.userId, 35);
-  const activeThemes = [...new Set([
-    ...recentThemes,
-    ...prefs.moreThemes,
-    ...prefs.lessThemes,
-  ])].filter((theme) => !prefs.hiddenThemes.includes(theme));
+  const recentThemeObjects = await repo.getRecentThemeObjectsForUser(payload.userId, 35, 8);
+  const byKey = new Map(recentThemeObjects.map((x) => [x.key, x]));
+  for (const key of [...prefs.moreThemes, ...prefs.lessThemes]) {
+    if (!byKey.has(key)) {
+      byKey.set(key, {
+        key,
+        name: key,
+        summary: '',
+        examples: [],
+        count: 0,
+      });
+    }
+  }
+  const activeThemes = [...byKey.values()].filter((theme) => !prefs.hiddenThemes.includes(theme.key));
 
   return preferencesPage({
     token,

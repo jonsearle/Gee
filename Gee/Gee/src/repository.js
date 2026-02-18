@@ -36,6 +36,39 @@ function normalizeTheme(theme) {
   return normalized;
 }
 
+function tokenize(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map((x) => x.trim())
+    .filter((x) => x.length >= 3);
+}
+
+function overlapScore(a, b) {
+  const setA = new Set(tokenize(a));
+  const setB = new Set(tokenize(b));
+  if (!setA.size || !setB.size) return 0;
+  let shared = 0;
+  for (const token of setA) {
+    if (setB.has(token)) shared += 1;
+  }
+  return shared / Math.max(setA.size, setB.size);
+}
+
+function normalizeFocusThemeName(name, summary = '') {
+  const base = normalizeTheme(name || summary);
+  if (!base) return '';
+  const text = `${base} ${normalizeTheme(summary)}`.toLowerCase();
+
+  if (/(career|interview|job|application|network|skill|development|preparation)/.test(text)) return 'career growth';
+  if (/(project|product|team|meeting|follow|feedback|update|execution|planning|time management)/.test(text)) return 'work execution';
+  if (/(personal project|side project)/.test(text)) return 'personal projects';
+  if (/(invest|investment|finance|fund|portfolio)/.test(text)) return 'finance';
+
+  return base;
+}
+
 function defaultSendDaysUtc() {
   return [0, 1, 2, 3, 4, 5, 6];
 }
@@ -331,6 +364,11 @@ export function createRepository({ supabaseUrl, supabaseServiceRoleKey }) {
     },
 
     async getRecentThemesForUser(userId, limit = 30) {
+      const objects = await this.getRecentThemeObjectsForUser(userId, limit, 12);
+      return objects.map((x) => x.key);
+    },
+
+    async getRecentThemeObjectsForUser(userId, limit = 30, maxThemes = 8) {
       const { data, error } = await db
         .from('gee_daily_runs')
         .select('plan_json,sent_at')
@@ -339,25 +377,90 @@ export function createRepository({ supabaseUrl, supabaseServiceRoleKey }) {
         .limit(limit);
       if (error) throw error;
 
-      const themes = [];
+      const clusters = new Map();
       for (const row of data || []) {
+        const sentAt = row?.sent_at || '';
+        const upsertCluster = ({ name, summary = '', raw = '' }) => {
+          const normalizedName = normalizeFocusThemeName(name, summary);
+          if (!normalizedName) return;
+
+          let key = normalizedName;
+          for (const candidate of clusters.keys()) {
+            const score = overlapScore(candidate, normalizedName);
+            if (score >= 0.7) {
+              key = candidate;
+              break;
+            }
+          }
+
+          const existing = clusters.get(key) || {
+            key,
+            name: key,
+            summary: '',
+            count: 0,
+            lastSeenAt: '',
+            examples: [],
+          };
+
+          existing.count += 1;
+          if (!existing.lastSeenAt || String(sentAt) > String(existing.lastSeenAt)) {
+            existing.lastSeenAt = sentAt;
+          }
+          if (summary && !existing.summary) existing.summary = summary;
+          if (raw && existing.examples.length < 3 && !existing.examples.includes(raw)) {
+            existing.examples.push(raw);
+          }
+
+          clusters.set(key, existing);
+        };
+
+        const focusThemes = Array.isArray(row?.plan_json?.focusThemes)
+          ? row.plan_json.focusThemes
+          : [];
         const mainThings = Array.isArray(row?.plan_json?.mainThings)
           ? row.plan_json.mainThings
           : [];
         const candidateThemes = Array.isArray(row?.plan_json?.candidateThemes)
           ? row.plan_json.candidateThemes
           : [];
+
+        for (const focus of focusThemes) {
+          upsertCluster({
+            name: String(focus?.name || ''),
+            summary: String(focus?.summary || ''),
+            raw: String(focus?.name || ''),
+          });
+        }
+
         for (const item of mainThings) {
-          const normalized = normalizeTheme(item?.theme);
-          if (normalized) themes.push(normalized);
+          upsertCluster({
+            name: String(item?.theme || ''),
+            summary: '',
+            raw: String(item?.theme || ''),
+          });
         }
         for (const theme of candidateThemes) {
-          const normalized = normalizeTheme(theme);
-          if (normalized) themes.push(normalized);
+          upsertCluster({
+            name: String(theme || ''),
+            summary: '',
+            raw: String(theme || ''),
+          });
         }
       }
 
-      return uniqueStrings(themes);
+      return [...clusters.values()]
+        .sort((a, b) => {
+          if (b.count !== a.count) return b.count - a.count;
+          return String(b.lastSeenAt).localeCompare(String(a.lastSeenAt));
+        })
+        .slice(0, maxThemes)
+        .map((x) => ({
+          key: x.key,
+          name: x.name,
+          summary: x.summary,
+          examples: x.examples,
+          count: x.count,
+        }));
     },
 
     async upsertUserPromptPreferences(userId, updates = {}) {

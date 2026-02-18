@@ -34,9 +34,18 @@ Style examples:
 
 Return ONLY valid JSON with this exact shape:
 {
+  "focus_themes": [
+    {
+      "id": "stable_focus_theme_id",
+      "name": "short focus theme name",
+      "summary": "one-sentence description of this focus area",
+      "anchor_terms": ["3-8 short anchor terms"]
+    }
+  ],
   "context_sentence": "string",
   "main_things": [
     {
+      "focus_theme_id": "id from focus_themes",
       "theme": "short normalized theme label",
       "title": "outcome-focused item",
       "detail": "light grounding detail (person/date/why today)",
@@ -90,6 +99,12 @@ For "theme":
 - Use broad, reusable labels (e.g. "career growth", "investments", "project planning").
 - Avoid splitting very similar items into separate themes.
 - Avoid dates, names, or sentence-like themes.
+
+For "focus_themes":
+- Return 3-6 focus areas total.
+- Each should be broad enough to cover multiple related actions.
+- "id" must be lowercase snake_case and stable for related items.
+- Keep summaries practical and concrete.
 
 For "candidate_themes":
 - Return 5-12 themes that are relevant from provided context, including plausible but not selected topics.
@@ -202,9 +217,24 @@ export async function synthesizeDailyPlan(client, model, payload) {
 
   const text = res.output_text || '';
   const json = parseJsonSafely(text);
+  const focusThemes = Array.isArray(json.focus_themes)
+    ? json.focus_themes
+        .map((t) => ({
+          id: String(t?.id || '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, ''),
+          name: String(t?.name || '').trim(),
+          summary: String(t?.summary || '').trim(),
+          anchorTerms: Array.isArray(t?.anchor_terms)
+            ? t.anchor_terms.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 8)
+            : [],
+        }))
+        .filter((t) => t.id && t.name)
+        .slice(0, 8)
+    : [];
+  const focusThemeById = new Map(focusThemes.map((t) => [t.id, t]));
   const mainThings = Array.isArray(json.main_things)
     ? json.main_things
         .map((i) => ({
+          focusThemeId: String(i?.focus_theme_id || '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, ''),
           theme: String(i?.theme || '').trim(),
           title: String(i?.title || '').trim(),
           detail: String(i?.detail || '').trim(),
@@ -213,17 +243,26 @@ export async function synthesizeDailyPlan(client, model, payload) {
             ? i.help_links.map((link) => toHelpLink(link, allow)).filter(Boolean).slice(0, 3)
             : [],
         }))
+        .map((i) => {
+          const matchedTheme = focusThemeById.get(i.focusThemeId);
+          if (!i.theme && matchedTheme?.name) return { ...i, theme: matchedTheme.name };
+          return i;
+        })
         .filter((i) => i.title)
         .slice(0, 5)
     : [];
   const candidateThemes = Array.isArray(json.candidate_themes)
     ? json.candidate_themes.map((x) => String(x).trim()).filter(Boolean)
     : [];
+  for (const theme of focusThemes) {
+    if (theme.name) candidateThemes.push(theme.name);
+  }
   for (const item of mainThings) {
     if (item.theme) candidateThemes.push(item.theme);
   }
 
   return {
+    focusThemes,
     contextSentence: String(json.context_sentence || '').trim(),
     mainThings,
     microNudge: String(json.micro_nudge || '').trim(),
