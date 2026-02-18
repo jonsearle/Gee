@@ -41,7 +41,7 @@ function fallbackResponse(event) {
   }
 
   return {
-    summary: `Next meeting is "${event.title}". I prepared a focused brief from the invite details.`,
+    summary: `Next meeting is "${event.title}". I could not generate the full prep brief, so this is the raw invite context.`,
     confidence: 'medium',
     items: [
       {
@@ -65,6 +65,21 @@ function asLines(value, max = 4) {
   return value.slice(0, max).map((x) => `- ${String(x)}`).join('\n');
 }
 
+function deterministicMiniBrief(event) {
+  const context = `${event.title} ${event.description_preview}`.trim();
+  const lines = context
+    .split(/\n+/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  const snippets = lines.length ? lines : ['Review role scope and responsibilities from the invite text.'];
+  return [
+    `Objective: Prepare for "${event.title}" using the invite details.`,
+    `Talking points:\n${snippets.map((x) => `- ${x}`).join('\n')}`,
+    'Questions to ask:\n- What are the top outcomes expected in the first 90 days?\n- How is product success measured for this role?',
+  ].join('\n\n');
+}
+
 export async function runMeetingPrep({ calendar, llm }) {
   const now = new Date().toISOString();
   const cal = await calendar.events.list({
@@ -80,7 +95,12 @@ export async function runMeetingPrep({ calendar, llm }) {
   const fallback = fallbackResponse(nextEvent);
   if (!nextEvent) return fallback;
 
-  if (!llm) return fallback;
+  if (!llm) {
+    return {
+      ...fallback,
+      summary: `${fallback.summary}\n\n${deterministicMiniBrief(nextEvent)}`,
+    };
+  }
 
   const client = llm.client || llm;
   const model = llm.model || 'gpt-4.1-mini';
@@ -101,7 +121,12 @@ export async function runMeetingPrep({ calendar, llm }) {
   });
 
   const parsed = parseJsonSafely(out.output_text || '');
-  if (!parsed || typeof parsed.summary !== 'string') return fallback;
+  if (!parsed || typeof parsed.summary !== 'string') {
+    return {
+      ...fallback,
+      summary: `${fallback.summary}\n\n${deterministicMiniBrief(nextEvent)}`,
+    };
+  }
 
   const sections = [
     `Objective: ${String(parsed.objective || '').trim() || 'Clarify the meeting objective based on the invite.'}`,
