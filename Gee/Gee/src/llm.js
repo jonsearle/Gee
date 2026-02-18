@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { deriveThemeKey, themeDisplayName } from './theme-domain.js';
+import { deriveThemeKey, themeDisplayName, uniqueStrings } from './theme-domain.js';
 
 export function createLlmClient(apiKey) {
   return new OpenAI({ apiKey });
@@ -218,6 +218,11 @@ export async function synthesizeDailyPlan(client, model, payload) {
 
   const text = res.output_text || '';
   const json = parseJsonSafely(text);
+  const hiddenThemeKeys = new Set(
+    uniqueStrings(payload?.userPreferences?.suppressedSections || [])
+      .map((x) => deriveThemeKey(x))
+      .filter(Boolean),
+  );
   const focusThemes = Array.isArray(json.focus_themes)
     ? json.focus_themes
         .map((t) => ({
@@ -232,12 +237,12 @@ export async function synthesizeDailyPlan(client, model, payload) {
         .filter((t) => t.id && t.key)
         .map((t) => ({
           ...t,
-          name: t.name || themeDisplayName(t.key),
+          name: themeDisplayName(t.key),
         }))
         .slice(0, 8)
     : [];
   const focusThemeById = new Map(focusThemes.map((t) => [t.id, t]));
-  const mainThings = Array.isArray(json.main_things)
+  const parsedMainThings = Array.isArray(json.main_things)
     ? json.main_things
         .map((i) => ({
           focusThemeId: String(i?.focus_theme_id || '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, ''),
@@ -251,8 +256,8 @@ export async function synthesizeDailyPlan(client, model, payload) {
         }))
         .map((i) => {
           const matchedTheme = focusThemeById.get(i.focusThemeId);
-          const themeKey = matchedTheme?.key || deriveThemeKey(i.theme);
-          const themeLabel = matchedTheme?.name || i.theme || themeDisplayName(themeKey);
+          const themeKey = matchedTheme?.key || deriveThemeKey(i.theme || i.focusThemeId);
+          const themeLabel = themeDisplayName(themeKey);
           return {
             ...i,
             themeKey,
@@ -262,14 +267,20 @@ export async function synthesizeDailyPlan(client, model, payload) {
         .filter((i) => i.title)
         .slice(0, 5)
     : [];
+  const mainThings = parsedMainThings.filter((item) => !hiddenThemeKeys.has(item.themeKey));
   const candidateThemes = Array.isArray(json.candidate_themes)
     ? json.candidate_themes.map((x) => String(x).trim()).filter(Boolean)
     : [];
+  const candidateThemeKeys = [];
   for (const theme of focusThemes) {
-    if (theme.name) candidateThemes.push(theme.name);
+    if (theme.key) candidateThemeKeys.push(theme.key);
   }
   for (const item of mainThings) {
-    if (item.themeLabel) candidateThemes.push(item.themeLabel);
+    if (item.themeKey) candidateThemeKeys.push(item.themeKey);
+  }
+  for (const theme of candidateThemes) {
+    const key = deriveThemeKey(theme);
+    if (key) candidateThemeKeys.push(key);
   }
 
   return {
@@ -280,7 +291,10 @@ export async function synthesizeDailyPlan(client, model, payload) {
     canWait: Array.isArray(json.can_wait)
       ? json.can_wait.map((x) => String(x).trim()).filter(Boolean).slice(0, 3)
       : [],
-    candidateThemes: [...new Set(candidateThemes)].slice(0, 16),
+    candidateThemes: [...new Set(candidateThemeKeys)]
+      .filter((key) => !hiddenThemeKeys.has(key))
+      .map((key) => themeDisplayName(key))
+      .slice(0, 16),
     observedWorkstreams: Array.isArray(json.observed_workstreams)
       ? json.observed_workstreams.map((x) => String(x).trim()).filter(Boolean).slice(0, 5)
       : [],
