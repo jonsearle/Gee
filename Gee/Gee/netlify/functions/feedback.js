@@ -189,7 +189,9 @@ function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '
           showAgain.className = 'theme-row';
           showAgain.setAttribute('data-theme', row.getAttribute('data-theme'));
           showAgain.setAttribute('data-state', 'hidden');
-          showAgain.innerHTML = `<span class="theme-chip">${row.querySelector('.theme-chip').textContent}</span><div class="theme-actions"><button type="button" class="action" data-pref="neutral">Show again</button></div>`;
+          showAgain.innerHTML = '<span class="theme-chip">'
+            + row.querySelector('.theme-chip').textContent
+            + '</span><div class="theme-actions"><button type="button" class="action" data-pref="neutral">Show again</button></div>';
           hiddenList.prepend(showAgain);
         }
 
@@ -200,7 +202,9 @@ function preferencesPage({ token, prefs, activeThemes, hiddenThemes, message = '
           li.className = 'theme-row';
           li.setAttribute('data-theme', theme);
           li.setAttribute('data-state', 'neutral');
-          li.innerHTML = `<span class="theme-chip">${row.querySelector('.theme-chip').textContent}</span><div class="theme-actions"><button type="button" class="action" data-pref="more">More</button><button type="button" class="action" data-pref="less">Less</button><details class="overflow-wrap"><summary class="overflow">...</summary><div class="overflow-menu"><button type="button" class="danger-link" data-pref="hidden">Don't show me again</button></div></details></div>`;
+          li.innerHTML = '<span class="theme-chip">'
+            + row.querySelector('.theme-chip').textContent
+            + '</span><div class="theme-actions"><button type="button" class="action" data-pref="more">More</button><button type="button" class="action" data-pref="less">Less</button><details class="overflow-wrap"><summary class="overflow">...</summary><div class="overflow-menu"><button type="button" class="danger-link" data-pref="hidden">Don\\'t show me again</button></div></details></div>';
           activeList.prepend(li);
         }
 
