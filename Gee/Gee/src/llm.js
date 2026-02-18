@@ -6,7 +6,7 @@ export function createLlmClient(apiKey) {
 }
 
 function buildPrompt({
-  userName, nowIso, emails, calendar, isFirstRun, userPreferences,
+  userName, nowIso, emails, calendar, isFirstRun, userPreferences, workspace,
 }) {
   return `You are G, a calm and pragmatic daily planning assistant.
 
@@ -113,6 +113,11 @@ For "candidate_themes":
 - Exclude hidden themes if provided in preferences.
 - Use the same style as "theme" and avoid near-duplicate variants.
 
+Workspace guidance:
+- WORKSPACE includes user-curated workstreams/actions from chat commits.
+- Prefer unresolved workspace actions when they are still relevant today.
+- Do not ignore strong workspace actions in favor of generic tasks.
+
 Quality bar:
 - Every main_things item must include at least one concrete anchor in title or detail:
   - person/team/company name, specific meeting/event, project name, email thread context, or explicit time/date.
@@ -125,6 +130,7 @@ Quality bar:
 Data follows:
 EMAILS=${JSON.stringify(emails)}
 CALENDAR=${JSON.stringify(calendar)}
+WORKSPACE=${JSON.stringify(workspace || {})}
 `;
 }
 
@@ -241,6 +247,42 @@ function isGenericCanWaitItem(text) {
   return GENERIC_CAN_WAIT_PATTERNS.some((re) => re.test(value));
 }
 
+function normalizeTitleKey(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function workspaceActionsToMainThings(workspace) {
+  const actions = Array.isArray(workspace?.actions) ? workspace.actions : [];
+  const workstreams = Array.isArray(workspace?.workstreams) ? workspace.workstreams : [];
+  const wsById = new Map(workstreams.map((w) => [w.id, w]));
+
+  return actions
+    .filter((a) => !['done', 'deferred'].includes(String(a?.status || '').toLowerCase()))
+    .map((a) => {
+      const ws = wsById.get(a.workstreamId);
+      const themeLabel = String(ws?.name || '').trim();
+      const themeKey = deriveThemeKey(themeLabel || 'workstream');
+      return {
+        focusThemeId: '',
+        theme: themeLabel || themeDisplayName(themeKey),
+        themeKey,
+        themeLabel: themeLabel || themeDisplayName(themeKey),
+        title: String(a?.title || '').trim(),
+        detail: String(a?.whyNow || '').trim(),
+        efficiencyHint: String(a?.efficiencyHint || '').trim(),
+        helpLinks: [],
+        _score: Number(a?.salience) || 0.5,
+      };
+    })
+    .filter((a) => a.title)
+    .sort((a, b) => b._score - a._score)
+    .slice(0, 3);
+}
+
 export async function synthesizeDailyPlan(client, model, payload) {
   const prompt = buildPrompt(payload);
   const calendarEvents = [
@@ -318,7 +360,18 @@ export async function synthesizeDailyPlan(client, model, payload) {
         .filter((i) => hasConcreteAnchor(`${i.title} ${i.detail}`) || i.helpLinks.length > 0)
         .slice(0, 5)
     : [];
-  const mainThings = parsedMainThings.filter((item) => !hiddenThemeKeys.has(item.themeKey));
+  const modelMainThings = parsedMainThings.filter((item) => !hiddenThemeKeys.has(item.themeKey));
+  const workspaceMainThings = workspaceActionsToMainThings(payload?.workspace || {})
+    .filter((item) => !hiddenThemeKeys.has(item.themeKey));
+  const mainThings = [];
+  const seen = new Set();
+  for (const item of [...workspaceMainThings, ...modelMainThings]) {
+    const key = normalizeTitleKey(item.title);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    mainThings.push(item);
+    if (mainThings.length >= 5) break;
+  }
   const candidateThemes = Array.isArray(json.candidate_themes)
     ? json.candidate_themes.map((x) => String(x).trim()).filter(Boolean)
     : [];
@@ -328,6 +381,10 @@ export async function synthesizeDailyPlan(client, model, payload) {
   }
   for (const item of mainThings) {
     if (item.themeKey) candidateThemeKeys.push(item.themeKey);
+  }
+  for (const ws of Array.isArray(payload?.workspace?.workstreams) ? payload.workspace.workstreams : []) {
+    const key = deriveThemeKey(ws?.name || ws?.summary || '');
+    if (key) candidateThemeKeys.push(key);
   }
   for (const theme of candidateThemes) {
     const key = deriveThemeKey(theme);

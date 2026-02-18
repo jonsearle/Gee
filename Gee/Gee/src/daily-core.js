@@ -59,6 +59,9 @@ export async function runForUser({
   const userPromptPreferences = repo && user.id
     ? await repo.getUserPromptPreferences(user.id)
     : null;
+  const workspaceState = repo && user.id
+    ? await repo.getWorkspaceState(user.id)
+    : null;
 
   const emailResult = await fetchRelevantEmails(gmail, {
     firstRunCompleted: Boolean(state.firstRunCompleted),
@@ -87,6 +90,7 @@ export async function runForUser({
         tonePrefs: userPromptPreferences.tone_prefs || {},
       }
       : null,
+    workspace: workspaceState,
   });
 
   const todayHuman = formatHumanDateUtc(new Date());

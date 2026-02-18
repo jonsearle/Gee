@@ -2,8 +2,11 @@ const signedOut = document.getElementById('signedOut');
 const signedIn = document.getElementById('signedIn');
 const whoami = document.getElementById('whoami');
 const sendNowBtn = document.getElementById('sendNowBtn');
+const openInboxChatBtn = document.getElementById('openInboxChatBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const statusText = document.getElementById('statusText');
+const inboxChatOverlay = document.getElementById('inboxChatOverlay');
+const closeInboxChatBtn = document.getElementById('closeInboxChatBtn');
 const inboxChatSelect = document.getElementById('inboxChatSelect');
 const inboxMessages = document.getElementById('inboxMessages');
 const inboxInput = document.getElementById('inboxInput');
@@ -173,6 +176,7 @@ async function sendToG() {
   if (!chatId) return setStatus('Select a chat to commit.', true);
   setStatus('Sending to G and updating workstreams...');
   await callWorkspace('send_to_g', { chatId });
+  inboxChatOverlay?.classList.add('hidden');
   setStatus('Committed to G.');
 }
 
@@ -188,6 +192,8 @@ async function sendPlanChat() {
 }
 
 sendNowBtn?.addEventListener('click', sendNow);
+openInboxChatBtn?.addEventListener('click', () => inboxChatOverlay?.classList.remove('hidden'));
+closeInboxChatBtn?.addEventListener('click', () => inboxChatOverlay?.classList.add('hidden'));
 logoutBtn?.addEventListener('click', logout);
 newChatBtn?.addEventListener('click', () => createChat().catch((err) => setStatus(err.message || 'Failed', true)));
 sendChatBtn?.addEventListener('click', () => sendChatMessage().catch((err) => setStatus(err.message || 'Failed', true)));

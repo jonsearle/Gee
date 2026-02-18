@@ -23,6 +23,7 @@
 
         <div class="actions center">
           <button id="sendNowBtn" class="btn primary">Send me my summary now</button>
+          <button id="openInboxChatBtn" class="btn">Open inbox chat</button>
           <button id="logoutBtn" class="btn">Log out</button>
         </div>
 
@@ -30,34 +31,41 @@
 
         <section class="workspace">
           <div class="workspace-col">
-            <h3>Inbox Chat</h3>
-            <p class="muted">Start from scratch, then commit only what matters with <strong>Send to G</strong>.</p>
-            <select id="inboxChatSelect"></select>
-            <div id="inboxMessages" class="log"></div>
-            <textarea id="inboxInput" rows="4" placeholder="Type what you want to work through..."></textarea>
-            <div class="actions">
-              <button id="newChatBtn" class="btn">New chat</button>
-              <button id="sendChatBtn" class="btn">Send message</button>
-              <button id="sendToGBtn" class="btn primary">Send to G</button>
-            </div>
-          </div>
-
-          <div class="workspace-col">
             <h3>Workstreams</h3>
             <p class="muted">Active progress threads you are moving forward.</p>
             <ul id="workstreamList" class="simple-list"></ul>
+          </div>
 
+          <div class="workspace-col">
             <h3>Daily Plans</h3>
             <select id="planSelect"></select>
             <div id="planActionList" class="log"></div>
-            <textarea id="planChatInput" rows="3" placeholder="Ask to adjust this plan..."></textarea>
+            <textarea id="planChatInput" rows="3" placeholder="One comment at a time to adjust this plan..."></textarea>
             <div class="actions">
-              <button id="sendPlanChatBtn" class="btn">Send to plan chat</button>
+              <button id="sendPlanChatBtn" class="btn">Apply comment to plan</button>
             </div>
           </div>
         </section>
       </section>
     </main>
+
+    <section id="inboxChatOverlay" class="overlay hidden">
+      <div class="overlay-card">
+        <div class="overlay-head">
+          <h3>Inbox Chat</h3>
+          <button id="closeInboxChatBtn" class="btn">Close</button>
+        </div>
+        <p class="muted">Chat freely. Nothing affects plans until you click <strong>Send to G</strong>.</p>
+        <select id="inboxChatSelect"></select>
+        <div id="inboxMessages" class="log"></div>
+        <textarea id="inboxInput" rows="6" placeholder="Type what you want to work through..."></textarea>
+        <div class="actions">
+          <button id="newChatBtn" class="btn">New chat</button>
+          <button id="sendChatBtn" class="btn">Send message</button>
+          <button id="sendToGBtn" class="btn primary">Send to G</button>
+        </div>
+      </div>
+    </section>
 
     <script type="module" src="/app.js"></script>
   </body>

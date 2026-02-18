@@ -221,6 +221,30 @@ export function appendPlanChatMessage(state, { planId, content }) {
     content: text,
     createdAt: now,
   });
+  // Keep plan editing simple: one comment => one actionable plan update.
+  const action = {
+    id: uid('act'),
+    workstreamId: plan.workstreamIds?.[0] || null,
+    title: firstWords(text, 14) || 'Update this plan',
+    whyNow: 'Added from plan chat comment.',
+    efficiencyHint: 'Convert this into the smallest next step and do it now.',
+    status: 'todo',
+    salience: 0.7,
+    createdAt: now,
+    updatedAt: now,
+  };
+  next.actions = [action, ...next.actions];
+  if (!Array.isArray(plan.actionIds)) plan.actionIds = [];
+  plan.actionIds.unshift(action.id);
+  plan.actionIds = plan.actionIds.slice(0, 8);
+  plan.updatedAt = now;
+
+  chat.messages.push({
+    id: uid('msg'),
+    role: 'system',
+    content: `Plan updated with new action: ${action.title}`,
+    createdAt: now,
+  });
   chat.updatedAt = now;
   next.updatedAt = now;
   return { state: next, planChat: chat };
