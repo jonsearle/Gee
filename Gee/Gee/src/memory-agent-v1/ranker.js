@@ -95,7 +95,21 @@ function reasonText(item, sourceType, normalized) {
   return parts.join('; ');
 }
 
-export function rankCandidates({ normalized, emailItems, calendarItems, interactionSignalProvider }) {
+function toDateValue(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+export function rankCandidates({
+  normalized,
+  queryUnderstanding,
+  emailItems,
+  calendarItems,
+  interactionSignalProvider,
+}) {
+  const intent = queryUnderstanding?.intent || 'general_context';
+  const sourcePreference = queryUnderstanding?.source_preference || 'both';
+  const isRecencyOrCount = intent === 'recent_activity' || intent === 'count_by_time';
   const promptTerms = tokenize(normalized.cleaned);
   const scored = [];
   for (const item of emailItems) {
@@ -106,16 +120,18 @@ export function rankCandidates({ normalized, emailItems, calendarItems, interact
     const temporalRelevance = scoreTemporalRelevance(item, 'email', normalized);
     const interactionSignal = interactionSignalProvider?.(item.id) ?? 0;
     const sourceQuality = scoreSourceQuality(item, 'email');
-    let score = (entityMatch * SCORE_WEIGHTS.entityMatch)
-      + (intentMatch * SCORE_WEIGHTS.intentMatch)
-      + (temporalRelevance * SCORE_WEIGHTS.temporalRelevance)
-      + (interactionSignal * SCORE_WEIGHTS.interactionSignal)
-      + (sourceQuality * SCORE_WEIGHTS.sourceQuality);
+    let score = isRecencyOrCount
+      ? (temporalRelevance * 0.75) + (sourceQuality * 0.15) + (interactionSignal * 0.1)
+      : (entityMatch * SCORE_WEIGHTS.entityMatch)
+        + (intentMatch * SCORE_WEIGHTS.intentMatch)
+        + (temporalRelevance * SCORE_WEIGHTS.temporalRelevance)
+        + (interactionSignal * SCORE_WEIGHTS.interactionSignal)
+        + (sourceQuality * SCORE_WEIGHTS.sourceQuality);
 
     const hasGroundingSignal = entityMatch >= 0.3
       || promptOverlap >= 0.2
       || (normalized.dateHints.length > 0 && temporalRelevance >= 0.6);
-    if (!hasGroundingSignal) score = Math.min(score, SCORE_THRESHOLDS.maybe - 0.01);
+    if (!isRecencyOrCount && !hasGroundingSignal) score = Math.min(score, SCORE_THRESHOLDS.maybe - 0.01);
 
     scored.push({ source_type: 'email', item, score, why_relevant: reasonText(item, 'email', normalized) });
   }
@@ -152,10 +168,21 @@ export function rankCandidates({ normalized, emailItems, calendarItems, interact
     deduped.push(row);
   }
 
-  const high = deduped.filter((x) => x.score >= SCORE_THRESHOLDS.high);
-  let surfaced = high.slice(0, RETRIEVAL_POLICY.maxSurfacedItems);
+  let surfaced = [];
+  if (isRecencyOrCount) {
+    const scoped = deduped.filter((x) => (sourcePreference === 'calendar' ? x.source_type === 'calendar' : x.source_type === 'email'));
+    scoped.sort((a, b) => {
+      const aDate = a.source_type === 'email' ? a.item.timestamp : a.item.start_time;
+      const bDate = b.source_type === 'email' ? b.item.timestamp : b.item.start_time;
+      return toDateValue(bDate) - toDateValue(aDate);
+    });
+    surfaced = scoped.slice(0, Math.min(RETRIEVAL_POLICY.maxSurfacedItems, queryUnderstanding?.requested_count || 3));
+  } else {
+    const high = deduped.filter((x) => x.score >= SCORE_THRESHOLDS.high);
+    surfaced = high.slice(0, RETRIEVAL_POLICY.maxSurfacedItems);
+  }
 
-  if (surfaced.length < RETRIEVAL_POLICY.targetSurfacedItems) {
+  if (!isRecencyOrCount && surfaced.length < RETRIEVAL_POLICY.targetSurfacedItems) {
     const maybe = deduped.filter((x) => x.score >= SCORE_THRESHOLDS.maybe && x.score < SCORE_THRESHOLDS.high);
     for (const candidate of maybe) {
       if (surfaced.length >= RETRIEVAL_POLICY.maxSurfacedItems) break;
@@ -168,13 +195,15 @@ export function rankCandidates({ normalized, emailItems, calendarItems, interact
     ? surfaced.reduce((acc, row) => acc + row.score, 0) / surfaced.length
     : 0;
   const highCount = surfaced.filter((x) => x.score >= SCORE_THRESHOLDS.high).length;
-  const confidence = highCount >= 2 && topScore >= SCORE_THRESHOLDS.high && averageSurfaced >= SCORE_THRESHOLDS.maybe
-    ? 'high'
-    : surfaced.length
-      ? 'medium'
-      : 'low';
+  const confidence = isRecencyOrCount
+    ? (surfaced.length ? 'high' : 'low')
+    : (highCount >= 2 && topScore >= SCORE_THRESHOLDS.high && averageSurfaced >= SCORE_THRESHOLDS.maybe
+      ? 'high'
+      : surfaced.length
+        ? 'medium'
+        : 'low');
 
-  if (confidence !== 'high' && surfaced.length > 2) surfaced = surfaced.slice(0, 2);
+  if (!isRecencyOrCount && confidence !== 'high' && surfaced.length > 2) surfaced = surfaced.slice(0, 2);
 
   return {
     confidence,

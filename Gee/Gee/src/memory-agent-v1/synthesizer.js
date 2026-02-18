@@ -31,7 +31,14 @@ function makeSummary(rows, confidence) {
   return `${first} Relevance may be partial based on available matches.`;
 }
 
-async function llmSummary({ llm, userInput, surfaced, fallbackSummary }) {
+async function llmSummary({
+  llm,
+  userInput,
+  queryUnderstanding,
+  retrievalFacts,
+  surfaced,
+  fallbackSummary,
+}) {
   if (!llm || !surfaced.length) return fallbackSummary;
   const client = llm.client || llm;
   const model = llm.model || 'gpt-4.1-mini';
@@ -49,9 +56,12 @@ async function llmSummary({ llm, userInput, surfaced, fallbackSummary }) {
   const prompt = [
     'You are a grounded assistant.',
     'Answer in 1-3 sentences using only the provided evidence.',
+    'If the user asks for counts or most recent senders, answer that directly from the facts.',
     'Do not invent facts and do not mention any source id not listed.',
     '',
     `User prompt: ${userInput}`,
+    `Query understanding: ${JSON.stringify(queryUnderstanding || {})}`,
+    `Retrieval facts: ${JSON.stringify(retrievalFacts || {})}`,
     `Evidence: ${JSON.stringify(evidence)}`,
   ].join('\n');
 
@@ -64,7 +74,14 @@ async function llmSummary({ llm, userInput, surfaced, fallbackSummary }) {
   return text || fallbackSummary;
 }
 
-export async function synthesizeResponse({ llm, userInput, confidence, surfaced }) {
+export async function synthesizeResponse({
+  llm,
+  userInput,
+  queryUnderstanding,
+  retrievalFacts,
+  confidence,
+  surfaced,
+}) {
   const items = surfaced.slice(0, 5).map((row) => ({
     title: itemTitle(row),
     source_type: row.source_type,
@@ -90,6 +107,8 @@ export async function synthesizeResponse({ llm, userInput, confidence, surfaced 
   const summary = await llmSummary({
     llm,
     userInput,
+    queryUnderstanding,
+    retrievalFacts,
     surfaced,
     fallbackSummary: fallback,
   });

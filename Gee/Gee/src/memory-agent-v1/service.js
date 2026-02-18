@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { normalizeInput } from './normalizer.js';
+import { interpretQuery } from './query-understanding.js';
 import { buildQueryPlan } from './query-planner.js';
 import { searchCalendar, searchEmail } from './connectors.js';
 import { rankCandidates } from './ranker.js';
@@ -9,6 +10,21 @@ import { getInteractionSignal, logInteraction } from './telemetry.js';
 
 function summarizeInput(input) {
   return String(input || '').slice(0, 240);
+}
+
+function buildRetrievalFacts({ emailItems, calendarItems }) {
+  const sortedEmails = [...emailItems].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const senderCounts = new Map();
+  for (const item of sortedEmails) {
+    const sender = String(item.from || '').trim();
+    if (!sender) continue;
+    senderCounts.set(sender, (senderCounts.get(sender) || 0) + 1);
+  }
+  return {
+    email_total: emailItems.length,
+    calendar_total: calendarItems.length,
+    latest_email_senders: [...senderCounts.keys()].slice(0, 5),
+  };
 }
 
 export async function runMemoryQuery({
@@ -21,7 +37,12 @@ export async function runMemoryQuery({
 }) {
   const interactionId = crypto.randomUUID();
   const normalized = normalizeInput(userInput);
-  const plan = buildQueryPlan(normalized);
+  const queryUnderstanding = await interpretQuery({
+    llm,
+    userInput,
+    normalizedInput: normalized,
+  });
+  const plan = buildQueryPlan(normalized, queryUnderstanding);
 
   const queryLogs = [];
   const retrievedIds = [];
@@ -51,13 +72,17 @@ export async function runMemoryQuery({
 
   const ranked = rankCandidates({
     normalized,
+    queryUnderstanding,
     emailItems,
     calendarItems,
     interactionSignalProvider: getInteractionSignal,
   });
+  const retrievalFacts = buildRetrievalFacts({ emailItems, calendarItems });
   const response = await synthesizeResponse({
     llm,
     userInput,
+    queryUnderstanding,
+    retrievalFacts,
     confidence: ranked.confidence,
     surfaced: ranked.surfaced,
   });
@@ -69,6 +94,7 @@ export async function runMemoryQuery({
     timestamp: new Date().toISOString(),
     input_summary: summarizeInput(userInput),
     session_id: String(sessionId || ''),
+    query_understanding: queryUnderstanding,
     tools_used: toolsUsed,
     queries: queryLogs,
     retrieved_count: retrievedCount,

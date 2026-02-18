@@ -34,6 +34,21 @@ function extractToneHints(input) {
   return hints;
 }
 
+function detectRetrievalIntent(input) {
+  const lower = input.toLowerCase();
+  const recentEmailPattern = /(last|latest|recent)\s+\d*\s*(email|emails|messages)|who\s+were\s+the\s+last.*(email|emails|messages).*(from)/;
+  if (recentEmailPattern.test(lower)) return 'recent_email_senders';
+  return 'default';
+}
+
+function extractRequestedCount(input) {
+  const m = input.toLowerCase().match(/\b(last|latest|recent)\s+(\d+)\b/);
+  if (!m) return null;
+  const n = Number(m[2]);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return Math.min(5, n);
+}
+
 export function normalizeInput(userInput) {
   const cleaned = compactWhitespace(userInput);
   return {
@@ -41,5 +56,7 @@ export function normalizeInput(userInput) {
     entities: extractEntities(cleaned),
     dateHints: extractDateHints(cleaned),
     toneHints: extractToneHints(cleaned),
+    retrievalIntent: detectRetrievalIntent(cleaned),
+    requestedCount: extractRequestedCount(cleaned),
   };
 }
