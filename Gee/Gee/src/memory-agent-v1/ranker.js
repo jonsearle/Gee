@@ -1,11 +1,18 @@
 import { RETRIEVAL_POLICY, SCORE_THRESHOLDS, SCORE_WEIGHTS } from './constants.js';
 
+const STOPWORDS = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'give', 'get', 'hi', 'how', 'i',
+  'if', 'in', 'is', 'it', 'me', 'my', 'of', 'on', 'or', 'please', 'show', 'the', 'there', 'to', 'we',
+  'what', 'when', 'where', 'which', 'who', 'with', 'you', 'your',
+]);
+
 function tokenize(value) {
   return String(value || '')
     .toLowerCase()
     .split(/[^a-z0-9@._-]+/)
     .map((x) => x.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((x) => !STOPWORDS.has(x));
 }
 
 function overlapRatio(a, b) {
@@ -30,7 +37,7 @@ function scoreEntityMatch(item, sourceType, normalized) {
 }
 
 function scoreIntentMatch(item, sourceType, normalized) {
-  if (!normalized.toneHints.length) return 0.5;
+  if (!normalized.toneHints.length) return 0.15;
   const text = sourceText(item, sourceType).toLowerCase();
   let hits = 0;
   for (const hint of normalized.toneHints) {
@@ -39,7 +46,7 @@ function scoreIntentMatch(item, sourceType, normalized) {
     if (hint === 'decision' && /(decision|approve|approved|sign-off|go\/no-go)/.test(text)) hits += 1;
     if (hint === 'reply' && /(reply|respond|follow up|follow-up)/.test(text)) hits += 1;
   }
-  return hits ? Math.min(1, hits / normalized.toneHints.length) : 0.25;
+  return hits ? Math.min(1, hits / normalized.toneHints.length) : 0.1;
 }
 
 function scoreTemporalRelevance(item, sourceType, normalized) {
@@ -89,32 +96,49 @@ function reasonText(item, sourceType, normalized) {
 }
 
 export function rankCandidates({ normalized, emailItems, calendarItems, interactionSignalProvider }) {
+  const promptTerms = tokenize(normalized.cleaned);
   const scored = [];
   for (const item of emailItems) {
+    const itemTerms = tokenize(sourceText(item, 'email'));
+    const promptOverlap = overlapRatio(promptTerms, itemTerms);
     const entityMatch = scoreEntityMatch(item, 'email', normalized);
     const intentMatch = scoreIntentMatch(item, 'email', normalized);
     const temporalRelevance = scoreTemporalRelevance(item, 'email', normalized);
     const interactionSignal = interactionSignalProvider?.(item.id) ?? 0;
     const sourceQuality = scoreSourceQuality(item, 'email');
-    const score = (entityMatch * SCORE_WEIGHTS.entityMatch)
+    let score = (entityMatch * SCORE_WEIGHTS.entityMatch)
       + (intentMatch * SCORE_WEIGHTS.intentMatch)
       + (temporalRelevance * SCORE_WEIGHTS.temporalRelevance)
       + (interactionSignal * SCORE_WEIGHTS.interactionSignal)
       + (sourceQuality * SCORE_WEIGHTS.sourceQuality);
+
+    const hasGroundingSignal = entityMatch >= 0.3
+      || promptOverlap >= 0.2
+      || (normalized.dateHints.length > 0 && temporalRelevance >= 0.6);
+    if (!hasGroundingSignal) score = Math.min(score, SCORE_THRESHOLDS.maybe - 0.01);
+
     scored.push({ source_type: 'email', item, score, why_relevant: reasonText(item, 'email', normalized) });
   }
 
   for (const item of calendarItems) {
+    const itemTerms = tokenize(sourceText(item, 'calendar'));
+    const promptOverlap = overlapRatio(promptTerms, itemTerms);
     const entityMatch = scoreEntityMatch(item, 'calendar', normalized);
     const intentMatch = scoreIntentMatch(item, 'calendar', normalized);
     const temporalRelevance = scoreTemporalRelevance(item, 'calendar', normalized);
     const interactionSignal = interactionSignalProvider?.(item.id) ?? 0;
     const sourceQuality = scoreSourceQuality(item, 'calendar');
-    const score = (entityMatch * SCORE_WEIGHTS.entityMatch)
+    let score = (entityMatch * SCORE_WEIGHTS.entityMatch)
       + (intentMatch * SCORE_WEIGHTS.intentMatch)
       + (temporalRelevance * SCORE_WEIGHTS.temporalRelevance)
       + (interactionSignal * SCORE_WEIGHTS.interactionSignal)
       + (sourceQuality * SCORE_WEIGHTS.sourceQuality);
+
+    const hasGroundingSignal = entityMatch >= 0.3
+      || promptOverlap >= 0.2
+      || (normalized.dateHints.length > 0 && temporalRelevance >= 0.6);
+    if (!hasGroundingSignal) score = Math.min(score, SCORE_THRESHOLDS.maybe - 0.01);
+
     scored.push({ source_type: 'calendar', item, score, why_relevant: reasonText(item, 'calendar', normalized) });
   }
 
@@ -143,7 +167,8 @@ export function rankCandidates({ normalized, emailItems, calendarItems, interact
   const averageSurfaced = surfaced.length
     ? surfaced.reduce((acc, row) => acc + row.score, 0) / surfaced.length
     : 0;
-  const confidence = topScore >= SCORE_THRESHOLDS.high && averageSurfaced >= SCORE_THRESHOLDS.maybe
+  const highCount = surfaced.filter((x) => x.score >= SCORE_THRESHOLDS.high).length;
+  const confidence = highCount >= 2 && topScore >= SCORE_THRESHOLDS.high && averageSurfaced >= SCORE_THRESHOLDS.maybe
     ? 'high'
     : surfaced.length
       ? 'medium'

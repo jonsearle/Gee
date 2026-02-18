@@ -17,9 +17,10 @@ function extractDateHints(input) {
 
 function extractEntities(input) {
   const entities = [];
-  const capitalized = input.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) || [];
+  const capitalizedPhrases = input.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) || [];
+  const acronyms = input.match(/\b[A-Z]{2,}\b/g) || [];
   const emails = input.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi) || [];
-  entities.push(...capitalized, ...emails);
+  entities.push(...capitalizedPhrases, ...acronyms, ...emails);
   return [...new Set(entities.map((x) => x.trim()).filter(Boolean))].slice(0, 12);
 }
 
